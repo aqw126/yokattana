@@ -257,6 +257,7 @@ $('#file').onchange=x=> {
       if(confirm(`${a.length}件のデータで現在の記録を置き換えます。よろしいですか？`)) {
         state.items=a;
         save();
+        Promise.all(state.items.map(syncItem));
         render()
       }
     }
@@ -269,3 +270,4 @@ $('#file').onchange=x=> {
 };
 render();
 initializeCloud();
+
