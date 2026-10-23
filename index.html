@@ -1,1 +1,284 @@
-<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>よかっ棚</title><link rel="stylesheet" href="styles.css"></head><body><header><a class="brand" href="#top"><b>⌁</b> よかっ棚</a><nav><button class="secondary" id="import">データを読み込む</button><button id="add">＋ 記録を追加</button><input id="file" type="file" accept="application/json" hidden></nav></header><main id="top"><section class="hero"><div><p class="eyebrow">PERSONAL LIBRARY</p><h1>読んだもの、観たものを<br>自分の言葉で残す。</h1><p>本、漫画、アニメ、技術書。ジャンルを気にせず、あなたの「よかった」を集める場所です。</p></div><aside><div><strong id="count">0</strong><span>登録作品</span></div><div><strong id="average">—</strong><span>平均評価</span></div><div><strong id="genres">0</strong><span>ジャンル</span></div></aside></section><section class="filters"><label class="search">⌕ <input id="query" type="search" placeholder="タイトル、ジャンル、タグで検索"></label><label><small>ジャンル</small><select id="genre"><option value="">すべて</option></select></label><label><small>タグ</small><select id="tag"><option value="">すべて</option></select></label><label><small>並べ替え</small><select id="sort"><option value="new">追加順（新しい）</option><option value="old">追加順（古い）</option><option value="high">評価が高い順</option><option value="low">評価が低い順</option><option value="title">タイトル順</option></select></label></section><section class="heading"><div><p class="eyebrow">LIBRARY</p><h2 id="heading">すべての記録</h2></div><button class="link" id="export">バックアップを書き出す</button></section><section class="empty" id="empty"><i>☷</i><h2>まだ記録がありません</h2><p>最初に読んだ本や観た作品を登録してみましょう。</p><button id="emptyAdd">最初の記録を追加</button></section><section class="empty" id="notfound" hidden><h2>見つかりませんでした</h2><p>検索条件を変えてみてください。</p></section><section class="grid" id="grid"></section></main><dialog id="dialog"><form id="form"><section class="modalhead"><div><p class="eyebrow" id="kicker">NEW ENTRY</p><h2 id="modalTitle">記録を追加</h2></div><button class="x" type="button" id="close">×</button></section><input id="id" type="hidden"><section class="formbody"><div class="coverbox"><div id="preview" class="preview">表紙画像</div><label class="secondary upload">画像を選ぶ<input id="cover" type="file" accept="image/*" hidden></label><button class="link" type="button" id="removeCover" hidden>画像を外す</button></div><div class="fields"><label>タイトル <em>必須</em><input id="title" required maxlength="100" placeholder="例：火車"></label><div class="pair"><label>ジャンル <em>必須</em><input id="entryGenre" required list="genreList" maxlength="40" placeholder="例：小説"><datalist id="genreList"></datalist></label><label>評価 <strong id="ratingValue">—</strong><input id="rating" type="range" min="0" max="5" step="0.1" value="0"><small class="range"><span>0.0</span><span>5.0</span></small></label></div><label>タグ <small>カンマまたは読点で区切る</small><input id="tags" maxlength="160" placeholder="例：ミステリー、社会派"></label><label>メモ<textarea id="notes" rows="6" maxlength="2000" placeholder="心に残った場面、あとで読み返したいことなど。"></textarea></label></div></section><footer><button class="link danger" id="delete" type="button" hidden>この記録を削除</button><div><button class="secondary" id="cancel" type="button">キャンセル</button><button type="submit">保存する</button></div></footer></form></dialog><template id="card"><article><button class="open"><div class="art"><img hidden><span></span></div><div class="cardbody"><div class="meta"><b></b><strong></strong></div><h3></h3><div class="tags"></div><p></p></div></button><footer><small></small><button class="link edit" type="button">編集</button></footer></article></template><script src="app.js"></script></body></html>
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>
+      よかっ棚
+    </title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <header>
+      <a class="brand" href="#top">
+        <b>
+          ⌁
+        </b>
+        よかっ棚
+      </a>
+      <nav>
+        <button class="secondary" id="import">
+          データを読み込む
+        </button>
+        <button id="add">
+          ＋ 記録を追加
+        </button>
+        <input id="file" type="file" accept="application/json" hidden>
+      </nav>
+    </header>
+    <main id="top">
+      <section class="hero">
+        <div>
+          <p class="eyebrow">
+            PERSONAL LIBRARY
+          </p>
+          <h1>
+            読んだもの、観たものを
+            <br>
+            自分の言葉で残す。
+          </h1>
+          <p>
+            本、漫画、アニメ、技術書。ジャンルを気にせず、あなたの「よかった」を集める場所です。
+          </p>
+        </div>
+        <aside>
+          <div>
+            <strong id="count">
+              0
+            </strong>
+            <span>
+              登録作品
+            </span>
+          </div>
+          <div>
+            <strong id="average">
+              —
+            </strong>
+            <span>
+              平均評価
+            </span>
+          </div>
+          <div>
+            <strong id="genres">
+              0
+            </strong>
+            <span>
+              ジャンル
+            </span>
+          </div>
+        </aside>
+      </section>
+      <section class="filters">
+        <label class="search">
+          ⌕
+          <input id="query" type="search" placeholder="タイトル、ジャンル、タグで検索">
+        </label>
+        <label>
+          <small>
+            ジャンル
+          </small>
+          <select id="genre">
+            <option value="">
+              すべて
+            </option>
+          </select>
+        </label>
+        <label>
+          <small>
+            タグ
+          </small>
+          <select id="tag">
+            <option value="">
+              すべて
+            </option>
+          </select>
+        </label>
+        <label>
+          <small>
+            並べ替え
+          </small>
+          <select id="sort">
+            <option value="new">
+              追加順（新しい）
+            </option>
+            <option value="old">
+              追加順（古い）
+            </option>
+            <option value="high">
+              評価が高い順
+            </option>
+            <option value="low">
+              評価が低い順
+            </option>
+            <option value="title">
+              タイトル順
+            </option>
+          </select>
+        </label>
+      </section>
+      <section class="heading">
+        <div>
+          <p class="eyebrow">
+            LIBRARY
+          </p>
+          <h2 id="heading">
+            すべての記録
+          </h2>
+        </div>
+        <button class="link" id="export">
+          バックアップを書き出す
+        </button>
+      </section>
+      <section class="empty" id="empty">
+        <i>
+          ☷
+        </i>
+        <h2>
+          まだ記録がありません
+        </h2>
+        <p>
+          最初に読んだ本や観た作品を登録してみましょう。
+        </p>
+        <button id="emptyAdd">
+          最初の記録を追加
+        </button>
+      </section>
+      <section class="empty" id="notfound" hidden>
+        <h2>
+          見つかりませんでした
+        </h2>
+        <p>
+          検索条件を変えてみてください。
+        </p>
+      </section>
+      <section class="grid" id="grid">
+      </section>
+    </main>
+    <dialog id="dialog">
+      <form id="form">
+        <section class="modalhead">
+          <div>
+            <p class="eyebrow" id="kicker">
+              NEW ENTRY
+            </p>
+            <h2 id="modalTitle">
+              記録を追加
+            </h2>
+          </div>
+          <button class="x" type="button" id="close">
+            ×
+          </button>
+        </section>
+        <input id="id" type="hidden">
+        <section class="formbody">
+          <div class="coverbox">
+            <div id="preview" class="preview">
+              表紙画像
+            </div>
+            <label class="secondary upload">
+              画像を選ぶ
+              <input id="cover" type="file" accept="image/*" hidden>
+            </label>
+            <button class="link" type="button" id="removeCover" hidden>
+              画像を外す
+            </button>
+          </div>
+          <div class="fields">
+            <label>
+              タイトル
+              <em>
+                必須
+              </em>
+              <input id="title" required maxlength="100" placeholder="例：火車">
+            </label>
+            <div class="pair">
+              <label>
+                ジャンル
+                <em>
+                  必須
+                </em>
+                <input id="entryGenre" required list="genreList" maxlength="40" placeholder="例：小説">
+                <datalist id="genreList">
+                </datalist>
+              </label>
+              <label>
+                評価
+                <strong id="ratingValue">
+                  —
+                </strong>
+                <input id="rating" type="range" min="0" max="5" step="0.1" value="0">
+                <small class="range">
+                  <span>
+                    0.0
+                  </span>
+                  <span>
+                    5.0
+                  </span>
+                </small>
+              </label>
+            </div>
+            <label>
+              タグ
+              <small>
+                カンマまたは読点で区切る
+              </small>
+              <input id="tags" maxlength="160" placeholder="例：ミステリー、社会派">
+            </label>
+            <label>
+              メモ
+              <textarea id="notes" rows="6" maxlength="2000" placeholder="心に残った場面、あとで読み返したいことなど。">
+              </textarea>
+            </label>
+          </div>
+        </section>
+        <footer>
+          <button class="link danger" id="delete" type="button" hidden>
+            この記録を削除
+          </button>
+          <div>
+            <button class="secondary" id="cancel" type="button">
+              キャンセル
+            </button>
+            <button type="submit">
+              保存する
+            </button>
+          </div>
+        </footer>
+      </form>
+    </dialog>
+    <template id="card">
+      <article>
+        <button class="open">
+          <div class="art">
+            <img hidden>
+            <span>
+            </span>
+          </div>
+          <div class="cardbody">
+            <div class="meta">
+              <b>
+              </b>
+              <strong>
+              </strong>
+            </div>
+            <h3>
+            </h3>
+            <div class="tags">
+            </div>
+            <p>
+            </p>
+          </div>
+        </button>
+        <footer>
+          <small>
+          </small>
+          <button class="link edit" type="button">
+            編集
+          </button>
+        </footer>
+      </article>
+    </template>
+    <script src="app.js">
+    </script>
+  </body>
+</html>
