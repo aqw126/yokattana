@@ -1,5 +1,5 @@
 const KEY='watashi-no-hondana-v1',$=s=>document.querySelector(s),state= {
-  items:load(),cover:null
+  items:load(),cover:null,formTags:[]
 };
 function load() {
   try {
@@ -17,9 +17,6 @@ function e(v='') {
     '&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'
   }
   [c]))
-}
-function tags(v) {
-  return[...new Set(v.split(/[,、]/).map(x=>x.trim()).filter(Boolean))]
 }
 function genres() {
   return[...new Set(state.items.map(x=>x.genre))].sort((a,b)=>a.localeCompare(b,'ja'))
@@ -83,10 +80,36 @@ function preview(v) {
   $('#preview').innerHTML=v?`<img src="${v}" alt="選択した表紙">`:'表紙画像';
   $('#removeCover').hidden=!v
 }
+function renderFormTags() {
+  const container=$('#tag-chips');
+  container.innerHTML='';
+  state.formTags.forEach((tag,index)=> {
+    const chip=document.createElement('button');
+    chip.type='button';
+    chip.className='tag-chip';
+    chip.textContent=`${tag} ×`;
+    chip.setAttribute('aria-label',`${tag} を削除`);
+    chip.onclick=()=> {
+      state.formTags=state.formTags.filter((_,tagIndex)=>tagIndex!==index);
+      renderFormTags()
+    };
+    container.append(chip)
+  })
+}
+function addFormTag() {
+  const input=$('#tag-input');
+  const tag=input.value.trim();
+  if(!tag||state.formTags.includes(tag)) return;
+  state.formTags.push(tag);
+  input.value='';
+  renderFormTags()
+}
 function reset() {
   $('#form').reset();
   $('#id').value='';
   state.cover=null;
+  state.formTags=[];
+  renderFormTags();
   $('#ratingValue').textContent='—';
   preview(null)
 }
@@ -101,7 +124,8 @@ function open(x) {
     $('#entryGenre').value=x.genre;
     $('#rating').value=x.rating;
     $('#ratingValue').textContent=Number(x.rating).toFixed(1);
-    $('#tags').value=x.tags.join('、');
+    state.formTags=[...(x.tags||[])];
+    renderFormTags();
     $('#notes').value=x.notes||'';
     state.cover=x.cover||null;
     preview(state.cover)
@@ -128,6 +152,13 @@ $('#emptyAdd').onclick=()=>open();
 $('#close').onclick=close;
 $('#cancel').onclick=close;
 $('#rating').oninput=x=>$('#ratingValue').textContent=Number(x.target.value).toFixed(1);
+$('#add-tag').onclick=addFormTag;
+$('#tag-input').addEventListener('keydown', event=> {
+  if(event.key==='Enter') {
+    event.preventDefault();
+    addFormTag()
+  }
+});
 $('#cover').onchange=x=> {
   let f=x.target.files[0];
   if(f) {
@@ -147,7 +178,7 @@ $('#removeCover').onclick=()=> {
 $('#form').onsubmit=x=> {
   x.preventDefault();
   let id=$('#id').value,old=state.items.find(x=>x.id===id),entry= {
-    id:id||crypto.randomUUID(),title:$('#title').value.trim(),genre:$('#entryGenre').value.trim(),rating:Number($('#rating').value),tags:tags($('#tags').value),notes:$('#notes').value.trim(),cover:state.cover,createdAt:old?.createdAt||new Date().toISOString(),updatedAt:new Date().toISOString()
+    id:id||crypto.randomUUID(),title:$('#title').value.trim(),genre:$('#entryGenre').value.trim(),rating:Number($('#rating').value),tags:[...state.formTags],notes:$('#notes').value.trim(),cover:state.cover,createdAt:old?.createdAt||new Date().toISOString(),updatedAt:new Date().toISOString()
   };
   state.items=old?state.items.map(x=>x.id===id?entry:x):[...state.items,entry];
   save();

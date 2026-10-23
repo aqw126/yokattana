@@ -217,13 +217,15 @@
                 </small>
               </label>
             </div>
-            <label>
-              タグ
-              <small>
-                カンマまたは読点で区切る
-              </small>
-              <input id="tags" maxlength="160" placeholder="例：ミステリー、社会派">
-            </label>
+            <div class="tag-editor">
+              <span>タグ</span>
+              <small>追加したタグは個別に削除できます</small>
+              <div id="tag-chips" class="tag-chips" aria-live="polite"></div>
+              <div class="tag-input-row">
+                <input id="tag-input" maxlength="80" placeholder="例：バトル、冒険">
+                <button id="add-tag" class="secondary" type="button">追加</button>
+              </div>
+            </div>
             <label>
               メモ
               <textarea id="notes" rows="6" maxlength="2000" placeholder="心に残った場面、あとで読み返したいことなど。">

@@ -524,3 +524,45 @@ dialog footer {
     height:180px
   }
 }
+
+.tag-editor {
+  display:grid;
+  gap:7px;
+  font-size:13px;
+  font-weight:650;
+}
+.tag-editor > small {
+  color:var(--muted);
+  font-size:10px;
+  font-weight:400;
+}
+.tag-chips {
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+  min-height:0;
+}
+.tag-chip {
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+  padding:5px 8px;
+  border:0;
+  border-radius:20px;
+  background:var(--pale);
+  color:var(--dark);
+  font-size:12px;
+}
+.tag-chip:hover {
+  background:#d4e3d5;
+}
+.tag-input-row {
+  display:flex;
+  gap:8px;
+}
+.tag-input-row input {
+  flex:1;
+}
+.tag-input-row .secondary {
+  padding:8px 12px;
+}
