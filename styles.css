@@ -566,3 +566,16 @@ dialog footer {
 .tag-input-row .secondary {
   padding:8px 12px;
 }
+
+.sync-status {
+  color:var(--muted);
+  font-size:11px;
+  white-space:nowrap;
+}
+.sync-status.connected {
+  color:var(--sage);
+  font-weight:700;
+}
+@media(max-width:720px) {
+  .sync-status { display:none; }
+}

@@ -1,4 +1,50 @@
-const KEY='watashi-no-hondana-v1',$=s=>document.querySelector(s),state= {
+const KEY='watashi-no-hondana-v1',$=s=>document.querySelector(s);
+const cloud=window.supabase?.createClient(window.SUPABASE_CONFIG?.url,window.SUPABASE_CONFIG?.publishableKey);
+let currentUser=null;
+
+function setSyncStatus(message,connected=false) {
+  const status=$('#sync-status');
+  status.textContent=message;
+  status.classList.toggle('connected',connected)
+}
+async function syncItem(item) {
+  if(!currentUser) return;
+  const { error }=await cloud.from('library_items').upsert({ id:item.id,user_id:currentUser.id,payload:item,updated_at:new Date().toISOString() });
+  if(error) setSyncStatus('同期に失敗しました');
+  else setSyncStatus('自動同期中',true)
+}
+async function removeRemoteItem(id) {
+  if(!currentUser) return;
+  const { error }=await cloud.from('library_items').delete().eq('id',id);
+  if(error) setSyncStatus('同期に失敗しました')
+}
+async function loadCloudItems() {
+  const { data,error }=await cloud.from('library_items').select('payload');
+  if(error) { setSyncStatus('同期に失敗しました'); return; }
+  const merged=new Map(state.items.map(item=>[item.id,item]));
+  data.forEach(row=> { const local=merged.get(row.payload.id); if(!local||new Date(row.payload.updatedAt)>new Date(local.updatedAt)) merged.set(row.payload.id,row.payload); });
+  state.items=[...merged.values()];
+  localStorage.setItem(KEY,JSON.stringify(state.items));
+  await Promise.all(state.items.map(syncItem));
+  setSyncStatus('自動同期中',true);
+  render()
+}
+async function initializeCloud() {
+  if(!cloud) { setSyncStatus('同期設定が見つかりません'); return; }
+  const { data }=await cloud.auth.getSession();
+  currentUser=data.session?.user||null;
+  if(currentUser) { $('#auth-button').textContent='ログアウト'; await loadCloudItems(); }
+  else setSyncStatus('ログインすると自動同期')
+}
+async function toggleAuthentication() {
+  if(currentUser) { await cloud.auth.signOut(); currentUser=null; $('#auth-button').textContent='ログイン'; setSyncStatus('ログインすると自動同期'); return; }
+  const email=prompt('ログイン用メールアドレスを入力してください');
+  if(!email) return;
+  const { error }=await cloud.auth.signInWithOtp({ email,options:{ emailRedirectTo:window.location.href } });
+  alert(error?'メールを送信できませんでした。':'メールを送りました。届いたリンクをこのブラウザで開いてください。')
+}
+
+const state= {
   items:load(),cover:null,formTags:[]
 };
 function load() {
@@ -147,6 +193,7 @@ function backup() {
   a.click();
   URL.revokeObjectURL(u)
 }
+$('#auth-button').onclick=toggleAuthentication;
 $('#add').onclick=()=>open();
 $('#emptyAdd').onclick=()=>open();
 $('#close').onclick=close;
@@ -182,6 +229,7 @@ $('#form').onsubmit=x=> {
   };
   state.items=old?state.items.map(x=>x.id===id?entry:x):[...state.items,entry];
   save();
+  syncItem(entry);
   close();
   render()
 };
@@ -190,6 +238,7 @@ $('#delete').onclick=()=> {
   if(id&&confirm('この記録を削除しますか？')) {
     state.items=state.items.filter(x=>x.id!==id);
     save();
+    removeRemoteItem(id);
     close();
     render()
   }
@@ -219,3 +268,4 @@ $('#file').onchange=x=> {
   x.target.value=''
 };
 render();
+initializeCloud();
