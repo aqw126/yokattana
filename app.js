@@ -1,4 +1,4 @@
-const KEY='watashi-no-hondana-v1',$=s=>document.querySelector(s);
+const KEY='watashi-no-hondana-v1',OWNER_KEY='watashi-no-hondana-owner',$=s=>document.querySelector(s);
 const cloud=window.supabase?.createClient(window.SUPABASE_CONFIG?.url,window.SUPABASE_CONFIG?.publishableKey);
 let currentUser=null;
 
@@ -8,25 +8,25 @@ function setSyncStatus(message,connected=false) {
   status.classList.toggle('connected',connected)
 }
 async function syncItem(item) {
-  if(!currentUser) return;
-  const { error }=await cloud.from('library_items').upsert({ id:item.id,user_id:currentUser.id,payload:item,updated_at:new Date().toISOString() });
-  if(error) setSyncStatus('同期に失敗しました');
-  else setSyncStatus('自動同期中',true)
+  if(!currentUser) return true;
+  const { error }=await cloud.from('library_items').upsert({ id:item.id,user_id:currentUser.id,payload:item,updated_at:item.updatedAt });
+  if(error) { setSyncStatus('同期に失敗しました'); return false; }
+  setSyncStatus('自動同期中',true);
+  return true
 }
-async function removeRemoteItem(id) {
-  if(!currentUser) return;
-  const { error }=await cloud.from('library_items').delete().eq('id',id);
-  if(error) setSyncStatus('同期に失敗しました')
+function isNewer(a,b) {
+  return new Date(a.updatedAt)>new Date(b.updatedAt)
 }
 async function loadCloudItems() {
   const { data,error }=await cloud.from('library_items').select('payload');
   if(error) { setSyncStatus('同期に失敗しました'); return; }
+  const remote=new Map();
+  data.forEach(row=> { const item=normalizeItem(row.payload); if(item) remote.set(item.id,item); });
   const merged=new Map(state.items.map(item=>[item.id,item]));
-  data.forEach(row=> { const local=merged.get(row.payload.id); if(!local||new Date(row.payload.updatedAt)>new Date(local.updatedAt)) merged.set(row.payload.id,row.payload); });
+  remote.forEach((item,id)=> { const local=merged.get(id); if(!local||isNewer(item,local)) merged.set(id,item); });
   state.items=[...merged.values()];
-  localStorage.setItem(KEY,JSON.stringify(state.items));
-  await Promise.all(state.items.map(syncItem));
-  setSyncStatus('自動同期中',true);
+  save();
+  await Promise.all(state.items.filter(item=> { const r=remote.get(item.id); return !r||isNewer(item,r); }).map(syncItem));
   render()
 }
 function accountIdentifier(accountName) {
@@ -43,6 +43,11 @@ async function finishLogin(user) {
   currentUser=user;
   $('#auth-dialog').close();
   $('#auth-button').textContent='ログアウト';
+  // 別アカウントのローカルデータを、ログインしたアカウントへ混ぜない
+  if(localStorage.getItem(OWNER_KEY)!==user.id) {
+    if(localStorage.getItem(OWNER_KEY)) { state.items=[]; save(); }
+    localStorage.setItem(OWNER_KEY,user.id)
+  }
   await loadCloudItems()
 }
 async function initializeCloud() {
@@ -54,8 +59,14 @@ async function initializeCloud() {
 }
 async function toggleAuthentication() {
   if(currentUser) {
+    const results=await Promise.all(state.items.map(syncItem));
+    if(results.includes(false)&&!confirm('同期できていない記録があります。ログアウトするとこの端末から消えます。続けますか？')) return;
     await cloud.auth.signOut();
     currentUser=null;
+    state.items=[];
+    save();
+    localStorage.removeItem(OWNER_KEY);
+    render();
     $('#auth-button').textContent='ログイン';
     setSyncStatus('ログインすると自動同期');
     return
@@ -90,16 +101,65 @@ async function signUpWithAccount() {
 const state= {
   items:load(),cover:null,formTags:[]
 };
+const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const COVER=/^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+$/;
+function validDate(v,fallback) {
+  const t=new Date(v);
+  return typeof v==='string'&&!isNaN(t)?t.toISOString():fallback
+}
+function normalizeItem(raw) {
+  if(!raw||typeof raw!=='object') return null;
+  const deleted=raw.deleted===true,title=String(raw.title??'').trim();
+  if(!deleted&&!title) return null;
+  const createdAt=validDate(raw.createdAt,new Date().toISOString());
+  return {
+    id:typeof raw.id==='string'&&UUID.test(raw.id)?raw.id:crypto.randomUUID(),
+    title,genre:String(raw.genre??'').trim()||'未分類',
+    rating:Math.min(5,Math.max(3,Number(raw.rating)||3)),
+    tags:Array.isArray(raw.tags)?[...new Set(raw.tags.map(t=>String(t).trim()).filter(Boolean))]:[],
+    notes:String(raw.notes??'').trim(),
+    cover:typeof raw.cover==='string'&&COVER.test(raw.cover)?raw.cover:null,
+    createdAt,updatedAt:validDate(raw.updatedAt,createdAt),deleted
+  }
+}
 function load() {
   try {
-    return JSON.parse(localStorage.getItem(KEY))||[]
+    const list=JSON.parse(localStorage.getItem(KEY));
+    return Array.isArray(list)?list.map(normalizeItem).filter(Boolean):[]
   }
   catch {
     return[]
   }
 }
 function save() {
-  localStorage.setItem(KEY,JSON.stringify(state.items))
+  try {
+    localStorage.setItem(KEY,JSON.stringify(state.items));
+    return true
+  }
+  catch {
+    return false
+  }
+}
+function liveItems() {
+  return state.items.filter(x=>!x.deleted)
+}
+function readCover(file) {
+  return new Promise((resolve,reject)=> {
+    if(!file.type.startsWith('image/')) return reject(new Error('画像ファイルを選んでください。'));
+    const url=URL.createObjectURL(file),img=new Image();
+    img.onload=()=> {
+      const scale=Math.min(1,600/Math.max(img.width,img.height)),c=document.createElement('canvas'),g=c.getContext('2d');
+      c.width=Math.max(1,Math.round(img.width*scale));
+      c.height=Math.max(1,Math.round(img.height*scale));
+      g.fillStyle='#fff';
+      g.fillRect(0,0,c.width,c.height);
+      g.drawImage(img,0,0,c.width,c.height);
+      URL.revokeObjectURL(url);
+      resolve(c.toDataURL('image/jpeg',0.8))
+    };
+    img.onerror=()=> { URL.revokeObjectURL(url); reject(new Error('画像を読み込めませんでした。')); };
+    img.src=url
+  })
 }
 function e(v='') {
   return String(v).replace(/[&<>'"]/g,c=>( {
@@ -108,10 +168,10 @@ function e(v='') {
   [c]))
 }
 function genres() {
-  return[...new Set(state.items.map(x=>x.genre))].sort((a,b)=>a.localeCompare(b,'ja'))
+  return[...new Set(liveItems().map(x=>x.genre))].sort((a,b)=>a.localeCompare(b,'ja'))
 }
 function alltags() {
-  return[...new Set(state.items.flatMap(x=>x.tags||[]))].sort((a,b)=>a.localeCompare(b,'ja'))
+  return[...new Set(liveItems().flatMap(x=>x.tags))].sort((a,b)=>a.localeCompare(b,'ja'))
 }
 function choices(el,values) {
   let old=el.value,label=el.options[0].text;
@@ -124,7 +184,7 @@ function date(v) {
   }).format(new Date(v))
 }
 function visible() {
-  let q=$('#query').value.trim().toLocaleLowerCase('ja'),g=$('#genre').value,t=$('#tag').value,s=$('#sort').value,r=state.items.filter(x=> {
+  let q=$('#query').value.trim().toLocaleLowerCase('ja'),g=$('#genre').value,t=$('#tag').value,s=$('#sort').value,r=liveItems().filter(x=> {
     let text=[x.title,x.genre,...x.tags,x.notes||''].join(' ').toLocaleLowerCase('ja');
     return(!q||text.includes(q))&&(!g||x.genre===g)&&(!t||x.tags.includes(t))
   });
@@ -134,14 +194,15 @@ function render() {
   choices($('#genre'),genres());
   choices($('#tag'),alltags());
   $('#genreList').innerHTML=genres().map(x=>`<option value="${e(x)}">`).join('');
-  $('#count').textContent=state.items.length;
+  const live=liveItems();
+  $('#count').textContent=live.length;
   $('#genres').textContent=genres().length;
-  $('#average').textContent=state.items.length?(state.items.reduce((a,x)=>a+Number(x.rating),0)/state.items.length).toFixed(1):'—';
+  $('#average').textContent=live.length?(live.reduce((a,x)=>a+Number(x.rating),0)/live.length).toFixed(1):'—';
   let list=visible(),grid=$('#grid');
   grid.innerHTML='';
-  $('#empty').hidden=state.items.length>0;
-  $('#notfound').hidden=state.items.length===0||list.length>0;
-  $('#heading').textContent=$('#query').value||$('#genre').value||$('#tag').value?`検索結果 (${list.length})`:`すべての記録 (${state.items.length})`;
+  $('#empty').hidden=live.length>0;
+  $('#notfound').hidden=live.length===0||list.length>0;
+  $('#heading').textContent=$('#query').value||$('#genre').value||$('#tag').value?`検索結果 (${list.length})`:`すべての記録 (${live.length})`;
   let tpl=$('#card');
   list.forEach(x=> {
     let n=tpl.content.cloneNode(true),img=n.querySelector('img'),letter=n.querySelector('.art span');
@@ -166,7 +227,15 @@ function render() {
   })
 }
 function preview(v) {
-  $('#preview').innerHTML=v?`<img src="${v}" alt="選択した表紙">`:'表紙画像';
+  const box=$('#preview');
+  box.textContent='表紙画像';
+  if(v) {
+    const img=document.createElement('img');
+    img.src=v;
+    img.alt='選択した表紙';
+    box.textContent='';
+    box.append(img)
+  }
   $('#removeCover').hidden=!v
 }
 function renderFormTags() {
@@ -225,6 +294,14 @@ function open(x) {
 function close() {
   $('#dialog').close()
 }
+function commit(items) {
+  const previous=state.items;
+  state.items=items;
+  if(save()) return true;
+  state.items=previous;
+  alert('保存できませんでした。ブラウザの保存容量が足りない可能性があります。バックアップを書き出して、不要な記録や画像を減らしてください。');
+  return false
+}
 function backup() {
   let u=URL.createObjectURL(new Blob([JSON.stringify( {
     version:1,exportedAt:new Date().toISOString(),items:state.items
@@ -252,15 +329,16 @@ $('#tag-input').addEventListener('keydown', event=> {
     addFormTag()
   }
 });
-$('#cover').onchange=x=> {
-  let f=x.target.files[0];
-  if(f) {
-    let r=new FileReader;
-    r.onload=()=> {
-      state.cover=r.result;
-      preview(state.cover)
-    };
-    r.readAsDataURL(f)
+$('#cover').onchange=async x=> {
+  const f=x.target.files[0];
+  if(!f) return;
+  try {
+    state.cover=await readCover(f);
+    preview(state.cover)
+  }
+  catch(error) {
+    alert(error.message);
+    x.target.value=''
   }
 };
 $('#removeCover').onclick=()=> {
@@ -271,20 +349,20 @@ $('#removeCover').onclick=()=> {
 $('#form').onsubmit=x=> {
   x.preventDefault();
   let id=$('#id').value,old=state.items.find(x=>x.id===id),entry= {
-    id:id||crypto.randomUUID(),title:$('#title').value.trim(),genre:$('#entryGenre').value.trim(),rating:Number($('#rating').value),tags:[...state.formTags],notes:$('#notes').value.trim(),cover:state.cover,createdAt:old?.createdAt||new Date().toISOString(),updatedAt:new Date().toISOString()
+    id:id||crypto.randomUUID(),title:$('#title').value.trim(),genre:$('#entryGenre').value.trim(),rating:Number($('#rating').value),tags:[...state.formTags],notes:$('#notes').value.trim(),cover:state.cover,createdAt:old?.createdAt||new Date().toISOString(),updatedAt:new Date().toISOString(),deleted:false
   };
-  state.items=old?state.items.map(x=>x.id===id?entry:x):[...state.items,entry];
-  save();
+  if(!commit(old?state.items.map(x=>x.id===id?entry:x):[...state.items,entry])) return;
   syncItem(entry);
   close();
   render()
 };
 $('#delete').onclick=()=> {
-  let id=$('#id').value;
-  if(id&&confirm('この記録を削除しますか？')) {
-    state.items=state.items.filter(x=>x.id!==id);
-    save();
-    removeRemoteItem(id);
+  let id=$('#id').value,old=state.items.find(x=>x.id===id);
+  if(old&&confirm('この記録を削除しますか？')) {
+    // 他の端末へ削除を伝えるため、中身を消した墓標として残す
+    const tombstone= { ...old,title:'',notes:'',cover:null,tags:[],deleted:true,updatedAt:new Date().toISOString() };
+    if(!commit(state.items.map(x=>x.id===id?tombstone:x))) return;
+    syncItem(tombstone);
     close();
     render()
   }
@@ -300,10 +378,16 @@ $('#file').onchange=x=> {
     try {
       let o=JSON.parse(r.result),a=Array.isArray(o)?o:o.items;
       if(!Array.isArray(a))throw 0;
-      if(confirm(`${a.length}件のデータで現在の記録を置き換えます。よろしいですか？`)) {
-        state.items=a;
-        save();
-        Promise.all(state.items.map(syncItem));
+      const imported=a.map(normalizeItem).filter(Boolean);
+      if(!imported.length&&a.length)throw 0;
+      if(confirm(`${imported.length}件のデータで現在の記録を置き換えます。よろしいですか？`)) {
+        const now=new Date().toISOString(),ids=new Set(imported.map(x=>x.id));
+        // 読み込みに含まれない既存の記録は削除扱いにして、クラウドからも消す
+        const removed=state.items.filter(x=>!x.deleted&&!ids.has(x.id)).map(x=>( { ...x,title:'',notes:'',cover:null,tags:[],deleted:true,updatedAt:now } ));
+        const kept=state.items.filter(x=>x.deleted&&!ids.has(x.id));
+        const next=imported.map(x=>( { ...x,updatedAt:now } ));
+        if(!commit([...kept,...removed,...next])) return;
+        Promise.all([...removed,...next].map(syncItem));
         render()
       }
     }
@@ -316,4 +400,5 @@ $('#file').onchange=x=> {
 };
 render();
 initializeCloud();
+
 
