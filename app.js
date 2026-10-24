@@ -92,7 +92,7 @@ const state= {
 };
 function load() {
   try {
-    return JSON.parse(localStorage.getItem(KEY))||[]
+    return (JSON.parse(localStorage.getItem(KEY))||[]).map(item=>({ ...item,rating:Math.min(5,Math.max(3,Number(item.rating)||3)) }))
   }
   catch {
     return[]
@@ -316,4 +316,5 @@ $('#file').onchange=x=> {
 };
 render();
 initializeCloud();
+
 
