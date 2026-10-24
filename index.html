@@ -257,13 +257,9 @@
           </div>
           <button class="x" id="close-auth" type="button" aria-label="閉じる">×</button>
         </section>
-        <p class="auth-copy">アカウント名とパスワードで、どの端末でも同じ記録を使えます。</p>
-        <div class="auth-fields">
-          <label>アカウント名<input id="account-name" autocomplete="username" minlength="2" maxlength="32" required placeholder="例：yokattana"></label>
-          <label>パスワード<input id="account-password" type="password" autocomplete="current-password" minlength="8" required placeholder="8文字以上"></label>
-        </div>
+        <p class="auth-copy">Googleアカウントでログインすると、どの端末でも同じ記録を使えます。</p>
         <p id="auth-message" class="auth-message" aria-live="polite"></p>
-        <footer><button class="secondary" id="signup-button" type="button">新規登録</button><button type="submit">ログイン</button></footer>
+        <footer><button type="button" id="google-button">Googleでログイン</button></footer>
       </form>
     </dialog>
     <template id="card">

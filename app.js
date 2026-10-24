@@ -29,13 +29,6 @@ async function loadCloudItems() {
   await Promise.all(state.items.filter(item=> { const r=remote.get(item.id); return !r||isNewer(item,r); }).map(syncItem));
   render()
 }
-function accountIdentifier(accountName) {
-  const normalized=accountName.trim().toLocaleLowerCase('ja');
-  if(normalized.length<2) throw new Error('アカウント名は2文字以上にしてください。');
-  const bytes=new TextEncoder().encode(normalized);
-  const encoded=btoa(String.fromCharCode(...bytes)).replaceAll('+','-').replaceAll('/','_').replaceAll('=','');
-  return `user-${encoded}@users.yokattana.invalid`
-}
 function setAuthMessage(message='') {
   $('#auth-message').textContent=message
 }
@@ -71,31 +64,13 @@ async function toggleAuthentication() {
     setSyncStatus('ログインすると自動同期');
     return
   }
-  $('#auth-form').reset();
   setAuthMessage();
-  $('#auth-dialog').showModal();
-  $('#account-name').focus()
+  $('#auth-dialog').showModal()
 }
-async function signInWithAccount(event) {
-  event.preventDefault();
-  let identifier;
-  try { identifier=accountIdentifier($('#account-name').value); }
-  catch(error) { setAuthMessage(error.message); return; }
-  const { data,error }=await cloud.auth.signInWithPassword({ email:identifier,password:$('#account-password').value });
-  if(error) { setAuthMessage('アカウント名またはパスワードが違います。'); return; }
-  await finishLogin(data.user)
-}
-async function signUpWithAccount() {
-  let identifier;
-  try { identifier=accountIdentifier($('#account-name').value); }
-  catch(error) { setAuthMessage(error.message); return; }
-  const password=$('#account-password').value;
-  if(password.length<8) { setAuthMessage('パスワードは8文字以上にしてください。'); return; }
-  setAuthMessage('アカウントを作成しています…');
-  const { data,error }=await cloud.auth.signUp({ email:identifier,password,options:{ data:{ display_name:$('#account-name').value.trim() } } });
-  if(error) { setAuthMessage(error.message); return; }
-  if(!data.session) { setAuthMessage('Supabaseでメール確認が有効です。Authenticationのメール確認をオフにしてください。'); return; }
-  await finishLogin(data.user)
+async function signInWithGoogle() {
+  setAuthMessage('Googleのログイン画面に移動します…');
+  const { error }=await cloud.auth.signInWithOAuth({ provider:'google',options:{ redirectTo:location.origin+location.pathname } });
+  if(error) setAuthMessage('ログインを開始できませんでした。時間をおいてもう一度お試しください。')
 }
 
 const state= {
@@ -314,8 +289,7 @@ function backup() {
   URL.revokeObjectURL(u)
 }
 $('#auth-button').onclick=toggleAuthentication;
-$('#auth-form').onsubmit=signInWithAccount;
-$('#signup-button').onclick=signUpWithAccount;
+$('#google-button').onclick=signInWithGoogle;
 $('#close-auth').onclick=()=>$('#auth-dialog').close();
 $('#add').onclick=()=>open();
 $('#emptyAdd').onclick=()=>open();
