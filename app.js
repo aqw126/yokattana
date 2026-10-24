@@ -29,19 +29,62 @@ async function loadCloudItems() {
   setSyncStatus('自動同期中',true);
   render()
 }
+function accountIdentifier(accountName) {
+  const normalized=accountName.trim().toLocaleLowerCase('ja');
+  if(normalized.length<2) throw new Error('アカウント名は2文字以上にしてください。');
+  const bytes=new TextEncoder().encode(normalized);
+  const encoded=btoa(String.fromCharCode(...bytes)).replaceAll('+','-').replaceAll('/','_').replaceAll('=','');
+  return `user-${encoded}@users.yokattana.invalid`
+}
+function setAuthMessage(message='') {
+  $('#auth-message').textContent=message
+}
+async function finishLogin(user) {
+  currentUser=user;
+  $('#auth-dialog').close();
+  $('#auth-button').textContent='ログアウト';
+  await loadCloudItems()
+}
 async function initializeCloud() {
   if(!cloud) { setSyncStatus('同期設定が見つかりません'); return; }
   const { data }=await cloud.auth.getSession();
   currentUser=data.session?.user||null;
-  if(currentUser) { $('#auth-button').textContent='ログアウト'; await loadCloudItems(); }
+  if(currentUser) await finishLogin(currentUser);
   else setSyncStatus('ログインすると自動同期')
 }
 async function toggleAuthentication() {
-  if(currentUser) { await cloud.auth.signOut(); currentUser=null; $('#auth-button').textContent='ログイン'; setSyncStatus('ログインすると自動同期'); return; }
-  const email=prompt('ログイン用メールアドレスを入力してください');
-  if(!email) return;
-  const { error }=await cloud.auth.signInWithOtp({ email,options:{ emailRedirectTo:window.location.href } });
-  alert(error?'メールを送信できませんでした。':'メールを送りました。届いたリンクをこのブラウザで開いてください。')
+  if(currentUser) {
+    await cloud.auth.signOut();
+    currentUser=null;
+    $('#auth-button').textContent='ログイン';
+    setSyncStatus('ログインすると自動同期');
+    return
+  }
+  $('#auth-form').reset();
+  setAuthMessage();
+  $('#auth-dialog').showModal();
+  $('#account-name').focus()
+}
+async function signInWithAccount(event) {
+  event.preventDefault();
+  let identifier;
+  try { identifier=accountIdentifier($('#account-name').value); }
+  catch(error) { setAuthMessage(error.message); return; }
+  const { data,error }=await cloud.auth.signInWithPassword({ email:identifier,password:$('#account-password').value });
+  if(error) { setAuthMessage('アカウント名またはパスワードが違います。'); return; }
+  await finishLogin(data.user)
+}
+async function signUpWithAccount() {
+  let identifier;
+  try { identifier=accountIdentifier($('#account-name').value); }
+  catch(error) { setAuthMessage(error.message); return; }
+  const password=$('#account-password').value;
+  if(password.length<8) { setAuthMessage('パスワードは8文字以上にしてください。'); return; }
+  setAuthMessage('アカウントを作成しています…');
+  const { data,error }=await cloud.auth.signUp({ email:identifier,password,options:{ data:{ display_name:$('#account-name').value.trim() } } });
+  if(error) { setAuthMessage(error.message); return; }
+  if(!data.session) { setAuthMessage('Supabaseでメール確認が有効です。Authenticationのメール確認をオフにしてください。'); return; }
+  await finishLogin(data.user)
 }
 
 const state= {
@@ -194,6 +237,9 @@ function backup() {
   URL.revokeObjectURL(u)
 }
 $('#auth-button').onclick=toggleAuthentication;
+$('#auth-form').onsubmit=signInWithAccount;
+$('#signup-button').onclick=signUpWithAccount;
+$('#close-auth').onclick=()=>$('#auth-dialog').close();
 $('#add').onclick=()=>open();
 $('#emptyAdd').onclick=()=>open();
 $('#close').onclick=close;

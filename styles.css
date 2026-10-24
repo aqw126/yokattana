@@ -579,3 +579,12 @@ dialog footer {
 @media(max-width:720px) {
   .sync-status { display:none; }
 }
+
+.auth-dialog { width:min(430px,calc(100vw - 28px)); }
+.auth-copy { color:var(--muted); font-size:13px; line-height:1.7; margin:0 0 20px; }
+.auth-fields { display:grid; gap:16px; }
+.auth-fields label { display:grid; gap:7px; font-size:13px; font-weight:650; }
+.auth-fields input { width:100%; border:1px solid var(--line); border-radius:7px; padding:10px; outline:0; background:#fff; font-size:14px; }
+.auth-fields input:focus { border-color:var(--sage); box-shadow:0 0 0 3px #4d725d1f; }
+.auth-message { min-height:20px; margin:14px 0 0; color:var(--muted); font-size:12px; }
+.auth-dialog footer { justify-content:flex-end; }
