@@ -243,7 +243,7 @@ function reset() {
   state.cover=null;
   state.formTags=[];
   renderFormTags();
-  $('#ratingValue').textContent='—';
+  $('#ratingValue').textContent=Number($('#rating').value).toFixed(1);
   preview(null)
 }
 function open(x) {
