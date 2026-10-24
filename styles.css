@@ -437,8 +437,11 @@ dialog footer {
 }
 @media(max-width:720px) {
   header {
-    height:63px;
-    padding:0 16px
+    height:auto;
+    min-height:63px;
+    padding:10px 16px;
+    flex-wrap:wrap;
+    gap:8px
   }
   .brand {
     font-size:15px
@@ -447,8 +450,13 @@ dialog footer {
     width:24px;
     height:24px
   }
-  nav .secondary {
-    display:none
+  nav {
+    gap:6px;
+    flex-wrap:wrap
+  }
+  nav button {
+    padding:8px 10px;
+    font-size:12px
   }
   main {
     padding:33px 16px 48px
