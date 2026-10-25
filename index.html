@@ -15,7 +15,7 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self'; img-src 'self' data: blob:; connect-src 'self' https://ndiwvgsgpmipypcipcpo.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'self'">
     <link rel="icon" href="icon.svg" type="image/svg+xml">
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="styles.css?v=202610251950">
+    <link rel="stylesheet" href="styles.css?v=202610252039">
   </head>
   <body>
     <header>
@@ -109,6 +109,12 @@
             <option value="old">
               追加順（古い）
             </option>
+            <option value="read">
+              読んだ日（新しい）
+            </option>
+            <option value="readold">
+              読んだ日（古い）
+            </option>
             <option value="high">
               評価が高い順
             </option>
@@ -130,9 +136,17 @@
             すべての記録
           </h2>
         </div>
-        <button class="link" id="export">
-          バックアップを書き出す
-        </button>
+        <div class="heading-actions">
+          <button class="link" id="open-review" type="button">
+            振り返り
+          </button>
+          <button class="link" id="open-manage" type="button">
+            ジャンル・タグの整理
+          </button>
+          <button class="link" id="export">
+            バックアップを書き出す
+          </button>
+        </div>
       </section>
       <section class="empty" id="empty">
         <i>
@@ -225,6 +239,16 @@
                 </small>
               </label>
             </div>
+            <label class="read-field">
+              読んだ日
+              <em class="optional">
+                任意
+              </em>
+              <span class="read-row">
+                <input id="readAt" type="date">
+                <button id="readToday" class="secondary" type="button">今日</button>
+              </span>
+            </label>
             <div class="tag-editor">
               <span>タグ</span>
               <small>追加したタグは個別に削除できます</small>
@@ -270,6 +294,46 @@
         <footer><button type="button" id="google-button">Googleでログイン</button></footer>
       </form>
     </dialog>
+    <dialog id="manage-dialog">
+      <form method="dialog">
+        <section class="modalhead">
+          <div>
+            <p class="eyebrow">ORGANIZE</p>
+            <h2>ジャンル・タグの整理</h2>
+          </div>
+          <button class="x" id="close-manage" type="button" aria-label="閉じる">×</button>
+        </section>
+        <p class="manage-note">名前を変えると、その記録すべてに反映されます。すでにある名前に変えると、1つにまとまります。</p>
+        <h3 class="manage-title">ジャンル</h3>
+        <ul id="manage-genres" class="manage-list"></ul>
+        <h3 class="manage-title">タグ</h3>
+        <ul id="manage-tags" class="manage-list"></ul>
+      </form>
+    </dialog>
+    <dialog id="review-dialog">
+      <form method="dialog">
+        <section class="modalhead">
+          <div>
+            <p class="eyebrow">REVIEW</p>
+            <h2>振り返り</h2>
+          </div>
+          <button class="x" id="close-review" type="button" aria-label="閉じる">×</button>
+        </section>
+        <label class="review-year">期間
+          <select id="review-year"></select>
+        </label>
+        <p class="manage-note">「読んだ日」が未入力の記録は、追加した日で数えます。</p>
+        <div id="review-summary" class="review-summary"></div>
+        <h3 class="manage-title" id="review-time-title">月ごとの件数</h3>
+        <div id="review-time" class="bars"></div>
+        <h3 class="manage-title">ジャンル別</h3>
+        <div id="review-genres" class="bars"></div>
+        <h3 class="manage-title">よく使ったタグ</h3>
+        <div id="review-tags" class="bars"></div>
+        <h3 class="manage-title">特によかったもの（★4.5以上）</h3>
+        <ul id="review-top" class="manage-list"></ul>
+      </form>
+    </dialog>
     <template id="card">
       <article>
         <button class="open">
@@ -303,8 +367,8 @@
       </article>
     </template>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js" integrity="sha384-TcHRA3zBbn+Lexh5n+Oil4guNPOS3rjNDpGRAN46u/s/mB2IZ50ceC6TYDU2yvgK" crossorigin="anonymous"></script>
-    <script src="supabase-config.js?v=202610251950"></script>
-    <script src="app.js?v=202610251950"></script>
+    <script src="supabase-config.js?v=202610252039"></script>
+    <script src="app.js?v=202610252039"></script>
   </body>
 </html>
 

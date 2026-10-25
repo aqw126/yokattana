@@ -189,6 +189,19 @@ function validDate(v,fallback) {
   const t=new Date(v);
   return typeof v==='string'&&!isNaN(t)?t.toISOString():fallback
 }
+function validDay(v) {
+  if(typeof v!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(v)) return null;
+  const d=new Date(v+'T00:00:00Z');
+  return !isNaN(d)&&d.toISOString().slice(0,10)===v?v:null
+}
+function localDay(d=new Date()) {
+  const p=n=>String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`
+}
+// 振り返りでの基準日: 読んだ日があればそれ、なければ追加した日
+function basisDay(item) {
+  return item.readAt||localDay(new Date(item.createdAt))
+}
 function normalizeItem(raw) {
   if(!raw||typeof raw!=='object') return null;
   const deleted=raw.deleted===true,title=String(raw.title??'').trim();
@@ -201,7 +214,7 @@ function normalizeItem(raw) {
     tags:Array.isArray(raw.tags)?[...new Set(raw.tags.map(t=>String(t).trim()).filter(Boolean))]:[],
     notes:String(raw.notes??'').trim(),
     cover:typeof raw.cover==='string'&&COVER.test(raw.cover)?raw.cover:null,
-    createdAt,updatedAt:validDate(raw.updatedAt,createdAt),deleted
+    readAt:validDay(raw.readAt),createdAt,updatedAt:validDate(raw.updatedAt,createdAt),deleted
   }
 }
 function load() {
@@ -321,7 +334,20 @@ function visible() {
     let text=[x.title,x.genre,...x.tags,x.notes||''].join(' ').toLocaleLowerCase('ja');
     return(!q||text.includes(q))&&(!g.size||g.has(x.genre))&&[...t].every(tag=>x.tags.includes(tag))
   });
-  return r.sort((a,b)=>s==='old'?new Date(a.createdAt)-new Date(b.createdAt):s==='high'?b.rating-a.rating||new Date(b.createdAt)-new Date(a.createdAt):s==='low'?a.rating-b.rating||new Date(b.createdAt)-new Date(a.createdAt):s==='title'?a.title.localeCompare(b.title,'ja'):new Date(b.createdAt)-new Date(a.createdAt))
+  return r.sort((a,b)=>compareItems(s,a,b))
+}
+function compareItems(s,a,b) {
+  const added=new Date(b.createdAt)-new Date(a.createdAt);
+  if(s==='old') return-added;
+  if(s==='high') return b.rating-a.rating||added;
+  if(s==='low') return a.rating-b.rating||added;
+  if(s==='title') return a.title.localeCompare(b.title,'ja');
+  if(s==='read'||s==='readold') {
+    // 読んだ日が未入力の記録は、どちらの並びでも最後にする
+    if(!a.readAt||!b.readAt) return a.readAt?-1:b.readAt?1:added;
+    return(s==='read'?b.readAt.localeCompare(a.readAt):a.readAt.localeCompare(b.readAt))||added
+  }
+  return added
 }
 function render() {
   renderFilter('genre',genres());
@@ -353,7 +379,7 @@ function render() {
     let p=n.querySelector('.cardbody p');
     p.textContent=x.notes||'';
     p.hidden=!x.notes;
-    n.querySelector('footer small').textContent=date(x.createdAt)+' に追加';
+    n.querySelector('footer small').textContent=x.readAt?date(x.readAt+'T00:00:00')+' に読んだ':date(x.createdAt)+' に追加';
     n.querySelector('.open').onclick=()=>openEditor(x);
     n.querySelector('.edit').onclick=()=>openEditor(x);
     grid.append(n)
@@ -422,6 +448,7 @@ function resetForm() {
   state.formTags=[];
   renderFormTags();
   $('#ratingValue').textContent=Number($('#rating').value).toFixed(1);
+  $('#readAt').max=localDay();
   preview(null);
   dirty=false
 }
@@ -439,6 +466,7 @@ function openEditor(x) {
     state.formTags=[...(x.tags||[])];
     renderFormTags();
     $('#notes').value=x.notes||'';
+    $('#readAt').value=x.readAt||'';
     state.cover=x.cover||null;
     preview(state.cover)
   }
@@ -512,7 +540,7 @@ $('#form').onsubmit=x=> {
   x.preventDefault();
   addFormTag();
   let id=$('#id').value,old=state.items.find(x=>x.id===id),entry= {
-    id:id||crypto.randomUUID(),title:$('#title').value.trim(),genre:$('#entryGenre').value.trim(),rating:Number($('#rating').value),tags:[...state.formTags],notes:$('#notes').value.trim(),cover:state.cover,createdAt:old?.createdAt||new Date().toISOString(),updatedAt:new Date().toISOString(),deleted:false
+    id:id||crypto.randomUUID(),title:$('#title').value.trim(),genre:$('#entryGenre').value.trim(),rating:Number($('#rating').value),readAt:validDay($('#readAt').value),tags:[...state.formTags],notes:$('#notes').value.trim(),cover:state.cover,createdAt:old?.createdAt||new Date().toISOString(),updatedAt:new Date().toISOString(),deleted:false
   };
   if(!commit(old?state.items.map(x=>x.id===id?entry:x):[...state.items,entry])) return;
   markPending([entry]);
@@ -589,6 +617,176 @@ $('#file').onchange=x=> {
   r.readAsText(f);
   x.target.value=''
 };
+$('#readToday').onclick=()=> {
+  $('#readAt').value=localDay();
+  dirty=true
+};
+
+// ジャンル・タグの整理
+function countBy(getter,items=liveItems()) {
+  const counts=new Map();
+  items.forEach(x=>getter(x).forEach(key=>counts.set(key,(counts.get(key)||0)+1)));
+  return[...counts]
+}
+function renderManage() {
+  fillManage($('#manage-genres'),countBy(x=>[x.genre]).sort((a,b)=>a[0].localeCompare(b[0],'ja')),'genre');
+  fillManage($('#manage-tags'),countBy(x=>x.tags).sort((a,b)=>a[0].localeCompare(b[0],'ja')),'tag')
+}
+function fillManage(list,rows,kind) {
+  list.innerHTML='';
+  if(!rows.length) {
+    const li=document.createElement('li');
+    li.className='manage-empty';
+    li.textContent='まだありません';
+    list.append(li)
+  }
+  rows.forEach(([name,count])=> {
+    const li=document.createElement('li'),label=document.createElement('span'),rename=document.createElement('button');
+    label.className='manage-name';
+    label.textContent=`${name}（${count}件）`;
+    rename.type='button';
+    rename.className='link';
+    rename.textContent='名前を変更';
+    rename.onclick=()=>renameOption(kind,name);
+    li.append(label,rename);
+    if(kind==='tag') {
+      const remove=document.createElement('button');
+      remove.type='button';
+      remove.className='link danger';
+      remove.textContent='削除';
+      remove.onclick=()=>deleteTag(name);
+      li.append(remove)
+    }
+    list.append(li)
+  })
+}
+function applyBulk(next,changed) {
+  if(!changed.length||!commit(next)) return;
+  markPending(changed);
+  syncItems(changed);
+  render();
+  renderManage()
+}
+function renameOption(kind,from) {
+  const input=prompt(`「${from}」の新しい名前`,from);
+  if(input===null) return;
+  const to=input.trim().slice(0,kind==='genre'?40:80);
+  if(!to||to===from) return;
+  if((kind==='genre'?genres():alltags()).includes(to)&&!confirm(`「${to}」はすでにあります。「${from}」の記録を「${to}」にまとめますか？`)) return;
+  const now=new Date().toISOString(),changed=[];
+  const next=state.items.map(x=> {
+    if(x.deleted) return x;
+    let y=x;
+    if(kind==='genre'&&x.genre===from) y= { ...x,genre:to,updatedAt:now };
+    if(kind==='tag'&&x.tags.includes(from)) y= { ...x,tags:[...new Set(x.tags.map(t=>t===from?to:t))],updatedAt:now };
+    if(y!==x) changed.push(y);
+    return y
+  });
+  applyBulk(next,changed)
+}
+function deleteTag(tag) {
+  const count=liveItems().filter(x=>x.tags.includes(tag)).length;
+  if(!confirm(`タグ「${tag}」を、${count}件の記録から外しますか？ 記録そのものは消えません。`)) return;
+  const now=new Date().toISOString(),changed=[];
+  const next=state.items.map(x=> {
+    if(x.deleted||!x.tags.includes(tag)) return x;
+    const y= { ...x,tags:x.tags.filter(t=>t!==tag),updatedAt:now };
+    changed.push(y);
+    return y
+  });
+  applyBulk(next,changed)
+}
+$('#open-manage').onclick=()=> {
+  renderManage();
+  $('#manage-dialog').showModal()
+};
+$('#close-manage').onclick=()=>$('#manage-dialog').close();
+
+// 振り返り
+function drawBars(box,rows) {
+  box.innerHTML='';
+  if(!rows.length) {
+    const empty=document.createElement('p');
+    empty.className='manage-empty';
+    empty.textContent='データがありません';
+    box.append(empty);
+    return
+  }
+  const max=Math.max(1,...rows.map(r=>r[1]));
+  rows.forEach(([label,value])=> {
+    const row=document.createElement('div'),name=document.createElement('span'),track=document.createElement('div'),fill=document.createElement('div'),num=document.createElement('span');
+    row.className='bar-row';
+    name.className='bar-label';
+    name.textContent=label;
+    track.className='bar-track';
+    fill.className='bar-fill';
+    fill.style.width=`${value/max*100}%`;
+    track.append(fill);
+    num.className='bar-count';
+    num.textContent=value;
+    row.append(name,track,num);
+    box.append(row)
+  })
+}
+function drawReview() {
+  const year=$('#review-year').value,items=liveItems().filter(x=>year==='all'||basisDay(x).startsWith(year));
+  const average=items.length?(items.reduce((a,x)=>a+x.rating,0)/items.length).toFixed(1):'—';
+  const top=items.filter(x=>x.rating>=4.5).sort((a,b)=>b.rating-a.rating||basisDay(b).localeCompare(basisDay(a)));
+  const summary=$('#review-summary');
+  summary.innerHTML='';
+  [['記録',items.length],['平均評価',average],['特によかった',top.length]].forEach(([label,value])=> {
+    const card=document.createElement('div'),strong=document.createElement('strong'),span=document.createElement('span');
+    strong.textContent=value;
+    span.textContent=label;
+    card.append(strong,span);
+    summary.append(card)
+  });
+  if(year==='all') {
+    $('#review-time-title').textContent='年ごとの件数';
+    drawBars($('#review-time'),countBy(x=>[basisDay(x).slice(0,4)],items).sort((a,b)=>a[0].localeCompare(b[0])).map(([y,n])=>[`${y}年`,n]))
+  }
+  else {
+    $('#review-time-title').textContent='月ごとの件数';
+    const byMonth=new Map(countBy(x=>[Number(basisDay(x).slice(5,7))],items));
+    drawBars($('#review-time'),Array.from({ length:12 },(_,i)=>[`${i+1}月`,byMonth.get(i+1)||0]))
+  }
+  const ranked=rows=>rows.sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0],'ja')).slice(0,8);
+  drawBars($('#review-genres'),ranked(countBy(x=>[x.genre],items)));
+  drawBars($('#review-tags'),ranked(countBy(x=>x.tags,items)));
+  const list=$('#review-top');
+  list.innerHTML='';
+  if(!top.length) {
+    const li=document.createElement('li');
+    li.className='manage-empty';
+    li.textContent='まだありません';
+    list.append(li)
+  }
+  top.slice(0,20).forEach(x=> {
+    const li=document.createElement('li'),name=document.createElement('span');
+    name.className='manage-name';
+    name.textContent=`★${x.rating.toFixed(1)}　${x.title}（${x.genre}）`;
+    li.append(name);
+    list.append(li)
+  })
+}
+function openReview() {
+  const years=[...new Set(liveItems().map(x=>basisDay(x).slice(0,4)))].sort().reverse(),select=$('#review-year');
+  select.innerHTML='<option value="all">すべての期間</option>';
+  years.forEach(y=> {
+    const option=document.createElement('option');
+    option.value=y;
+    option.textContent=`${y}年`;
+    select.append(option)
+  });
+  const thisYear=String(new Date().getFullYear());
+  select.value=years.includes(thisYear)?thisYear:'all';
+  drawReview();
+  $('#review-dialog').showModal()
+}
+$('#open-review').onclick=openReview;
+$('#review-year').onchange=drawReview;
+$('#close-review').onclick=()=>$('#review-dialog').close();
+
 // 別のタブでの変更を取り込む（編集中は触らない）
 window.addEventListener('storage',event=> {
   if(event.key!==KEY||!event.newValue) return;
