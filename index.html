@@ -15,7 +15,7 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self'; img-src 'self' data: blob:; connect-src 'self' https://ndiwvgsgpmipypcipcpo.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'self'">
     <link rel="icon" href="icon.svg" type="image/svg+xml">
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="styles.css?v=202610252039">
+    <link rel="stylesheet" href="styles.css?v=202610252048">
   </head>
   <body>
     <header>
@@ -32,7 +32,7 @@
         <button id="add">
           ＋ 記録を追加
         </button>
-        <input id="file" type="file" accept="application/json" hidden>
+        <input id="file" type="file" accept=".json,.csv,application/json,text/csv" hidden>
       </nav>
     </header>
     <main id="top">
@@ -143,8 +143,11 @@
           <button class="link" id="open-manage" type="button">
             ジャンル・タグの整理
           </button>
-          <button class="link" id="export">
-            バックアップを書き出す
+          <button class="link" id="open-trash" type="button">
+            ごみ箱
+          </button>
+          <button class="link" id="open-data" type="button">
+            データの管理
           </button>
         </div>
       </section>
@@ -172,6 +175,7 @@
       </section>
       <section class="grid" id="grid">
       </section>
+      <div class="more-row"><button class="secondary" id="more" type="button" hidden>さらに表示</button></div>
     </main>
     <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
     <p class="site-footer"><a href="privacy.html">プライバシーポリシー</a></p>
@@ -294,6 +298,49 @@
         <footer><button type="button" id="google-button">Googleでログイン</button></footer>
       </form>
     </dialog>
+    <dialog id="trash-dialog">
+      <form method="dialog">
+        <section class="modalhead">
+          <div>
+            <p class="eyebrow">TRASH</p>
+            <h2>ごみ箱</h2>
+          </div>
+          <button class="x" id="close-trash" type="button" aria-label="閉じる">×</button>
+        </section>
+        <p class="manage-note">削除した記録は、30日間ここに残ります。期間を過ぎると、完全に削除されます。</p>
+        <ul id="trash-list" class="manage-list"></ul>
+        <p class="trash-footer"><button type="button" class="link danger" id="empty-trash" hidden>ごみ箱を空にする</button></p>
+      </form>
+    </dialog>
+    <dialog id="data-dialog">
+      <form method="dialog">
+        <section class="modalhead">
+          <div>
+            <p class="eyebrow">DATA</p>
+            <h2>データの管理</h2>
+          </div>
+          <button class="x" id="close-data" type="button" aria-label="閉じる">×</button>
+        </section>
+        <h3 class="manage-title">書き出し</h3>
+        <p class="manage-note">JSONは、このアプリに戻せるバックアップです。CSVは、表計算ソフトで開ける一覧です（表紙画像は含みません）。</p>
+        <div class="data-actions">
+          <button type="button" class="secondary" id="export">JSONで書き出す</button>
+          <button type="button" class="secondary" id="export-csv">CSVで書き出す</button>
+        </div>
+        <h3 class="manage-title">読み込み</h3>
+        <p class="manage-note">JSON（バックアップ）は、現在の記録を置き換えます。CSV（ブクログなどの書き出し）は、今の記録に追加します。タイトルと読んだ日が同じ記録は、読み飛ばします。</p>
+        <div class="data-actions">
+          <button type="button" class="secondary" id="import-data">ファイルを選んで読み込む</button>
+        </div>
+        <section id="account-section" hidden>
+          <h3 class="manage-title">アカウント</h3>
+          <p class="manage-note">Googleアカウントでのログインに紐づく、クラウド上のアカウントと記録をすべて削除します。この端末の記録も消え、元に戻せません。先にバックアップを書き出してください。</p>
+          <div class="data-actions">
+            <button type="button" class="link danger" id="delete-account">アカウントとクラウドの記録を削除</button>
+          </div>
+        </section>
+      </form>
+    </dialog>
     <dialog id="manage-dialog">
       <form method="dialog">
         <section class="modalhead">
@@ -367,8 +414,8 @@
       </article>
     </template>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js" integrity="sha384-TcHRA3zBbn+Lexh5n+Oil4guNPOS3rjNDpGRAN46u/s/mB2IZ50ceC6TYDU2yvgK" crossorigin="anonymous"></script>
-    <script src="supabase-config.js?v=202610252039"></script>
-    <script src="app.js?v=202610252039"></script>
+    <script src="supabase-config.js?v=202610252048"></script>
+    <script src="app.js?v=202610252048"></script>
   </body>
 </html>
 

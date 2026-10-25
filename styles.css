@@ -650,3 +650,10 @@ dialog footer {
 .bar-fill { height:100%; border-radius:5px; background:var(--sage); }
 .bar-count { text-align:right; color:var(--muted); }
 #manage-dialog, #review-dialog { width:min(560px,calc(100vw - 28px)); max-height:calc(100vh - 40px); }
+
+.more-row { display:flex; justify-content:center; margin:20px 0 0; }
+.more-row[hidden], #more[hidden] { display:none; }
+.data-actions { display:flex; flex-wrap:wrap; gap:10px; }
+.trash-footer { margin:12px 0 0; text-align:right; }
+.trash-days { color:var(--muted); font-size:12px; }
+#trash-dialog, #data-dialog { width:min(560px,calc(100vw - 28px)); max-height:calc(100vh - 40px); }

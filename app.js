@@ -1,9 +1,9 @@
 const KEY='yokattana-v1',OWNER_KEY='yokattana-owner',PENDING_KEY='yokattana-pending',$=s=>document.querySelector(s);
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const COVER=/^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+$/;
-const TOMBSTONE_DAYS=90,SYNC_CHUNK=20,PAGE_SIZE=100,COVER_LIMIT=150000;
+const TRASH_DAYS=30,CARD_PAGE=24,TOMBSTONE_DAYS=90,SYNC_CHUNK=20,PAGE_SIZE=100,COVER_LIMIT=150000;
 const cloud=window.supabase?.createClient(window.SUPABASE_CONFIG?.url,window.SUPABASE_CONFIG?.publishableKey);
-let currentUser=null,flushing=false,shrinking=false,dirty=false;
+let shownLimit=CARD_PAGE,lastView='',currentUser=null,flushing=false,shrinking=false,dirty=false;
 
 // 旧名称で保存されたデータを引き継ぐ
 try {
@@ -105,7 +105,7 @@ async function loadCloudItems() {
   const remote=new Map();
   rows.forEach(row=> { const item=normalizeItem(row.payload); if(item) remote.set(item.id,item); });
   const cutoff=Date.now()-TOMBSTONE_DAYS*86400000;
-  const merged=mergeItems(state.items,[...remote.values()]);
+  const merged=compactTrash(mergeItems(state.items,[...remote.values()]));
   // 十分古い削除記録は、端末とクラウドの両方から片付ける
   const expired=merged.filter(x=>x.deleted&&new Date(x.updatedAt)<cutoff);
   state.items=merged.filter(x=>!expired.includes(x));
@@ -188,6 +188,17 @@ const state= {
 function validDate(v,fallback) {
   const t=new Date(v);
   return typeof v==='string'&&!isNaN(t)?t.toISOString():fallback
+}
+function hasContent(x) {
+  return!!(x.title||x.notes||x.cover||x.tags.length)
+}
+function emptyOf(x,now) {
+  return { ...x,title:'',notes:'',cover:null,tags:[],readAt:null,deleted:true,updatedAt:now }
+}
+// ごみ箱に入れて30日たった記録は、中身を消して、削除したことだけを残す
+function compactTrash(list) {
+  const cutoff=Date.now()-TRASH_DAYS*86400000,now=new Date().toISOString();
+  return list.map(x=>x.deleted&&hasContent(x)&&new Date(x.updatedAt)<cutoff?emptyOf(x,now):x)
 }
 function validDay(v) {
   if(typeof v!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(v)) return null;
@@ -302,7 +313,7 @@ function applyOptionSearch(root) {
 }
 // 複数選択のフィルター。選択肢が変わったときだけ作り直す（操作中のフォーカスを保つ）
 function renderFilter(kind,values) {
-  const root=$(`#${kind}-filter`),panel=root.querySelector('.multi-panel'),selected=filters[kind],key=values.join(' ');
+  const root=$(`#${kind}-filter`),panel=root.querySelector('.multi-panel'),selected=filters[kind],key=values.join('\u0000');
   [...selected].filter(v=>!values.includes(v)).forEach(v=>selected.delete(v));
   if(filterKeys[kind]!==key) {
     filterKeys[kind]=key;
@@ -358,14 +369,22 @@ function render() {
   $('#genres').textContent=genres().length;
   $('#average').textContent=live.length?(live.reduce((a,x)=>a+Number(x.rating),0)/live.length).toFixed(1):'—';
   let list=visible(),grid=$('#grid');
+  const view=JSON.stringify([$('#query').value,$('#sort').value,[...filters.genre],[...filters.tag]]);
+  if(view!==lastView) { lastView=view; shownLimit=CARD_PAGE; }
   grid.innerHTML='';
+  $('#more').hidden=list.length<=shownLimit;
+  $('#more').textContent=`さらに表示（残り${list.length-shownLimit}件）`;
+  const trashed=trashItems().length;
+  $('#open-trash').textContent=trashed?`ごみ箱 (${trashed})`:'ごみ箱';
   $('#empty').hidden=live.length>0;
   $('#notfound').hidden=live.length===0||list.length>0;
   $('#heading').textContent=$('#query').value||filters.genre.size||filters.tag.size?`検索結果 (${list.length})`:`すべての記録 (${live.length})`;
   let tpl=$('#card');
-  list.forEach(x=> {
+  list.slice(0,shownLimit).forEach(x=> {
     let n=tpl.content.cloneNode(true),img=n.querySelector('img'),letter=n.querySelector('.art span');
     if(x.cover) {
+      img.loading='lazy';
+      img.decoding='async';
       img.src=x.cover;
       img.alt=x.title+'の表紙';
       img.hidden=false;
@@ -550,14 +569,15 @@ $('#form').onsubmit=x=> {
 };
 $('#delete').onclick=()=> {
   let id=$('#id').value,old=state.items.find(x=>x.id===id);
-  if(old&&confirm('この記録を削除しますか？')) {
-    // 他の端末へ削除を伝えるため、中身を消した墓標として残す
-    const tombstone= { ...old,title:'',notes:'',cover:null,tags:[],deleted:true,updatedAt:new Date().toISOString() };
-    if(!commit(state.items.map(x=>x.id===id?tombstone:x))) return;
-    markPending([tombstone]);
-    syncItem(tombstone);
+  if(old&&confirm('この記録をごみ箱に移動しますか？')) {
+    // 他の端末へも伝わるよう、削除済みの印を付けて、30日間は戻せるように残す
+    const trashed= { ...old,deleted:true,updatedAt:new Date().toISOString() };
+    if(!commit(state.items.map(x=>x.id===id?trashed:x))) return;
+    markPending([trashed]);
+    syncItem(trashed);
     closeEditor(true);
-    render()
+    render();
+    showToast(`ごみ箱に移動しました。${TRASH_DAYS}日間は、ごみ箱から戻せます。`)
   }
 };
 ['#query','#sort'].forEach(s=>$(s).addEventListener(s==='#query'?'input':'change',render));
@@ -585,37 +605,222 @@ document.querySelectorAll('.multi-clear').forEach(button=> {
 document.addEventListener('click',event=> document.querySelectorAll('.multi[open]').forEach(d=> { if(!d.contains(event.target)) d.open=false; }));
 document.addEventListener('keydown',event=> { if(event.key==='Escape') document.querySelectorAll('.multi[open]').forEach(d=> { d.open=false; }); });
 $('#export').onclick=()=>backup();
+$('#export-csv').onclick=exportCsv;
 $('#import').onclick=()=>$('#file').click();
-$('#file').onchange=x=> {
-  let f=x.target.files[0];
-  if(!f)return;
-  let r=new FileReader;
-  r.onload=()=> {
-    try {
-      let o=JSON.parse(r.result),a=Array.isArray(o)?o:o.items;
-      if(!Array.isArray(a))throw 0;
-      const imported=a.map(normalizeItem).filter(Boolean);
-      if(!imported.length&&a.length)throw 0;
-      if(confirm(`${imported.length}件のデータで現在の記録を置き換えます。置き換える前の記録は、バックアップとして自動で保存します。よろしいですか？`)) {
-        if(liveItems().length) backup('yokattana-before-import');
-        const now=new Date().toISOString(),ids=new Set(imported.map(x=>x.id));
-        // 読み込みに含まれない既存の記録は削除扱いにして、クラウドからも消す
-        const removed=state.items.filter(x=>!x.deleted&&!ids.has(x.id)).map(x=>( { ...x,title:'',notes:'',cover:null,tags:[],deleted:true,updatedAt:now } ));
-        const kept=state.items.filter(x=>x.deleted&&!ids.has(x.id));
-        const next=imported.map(x=>( { ...x,updatedAt:now } ));
-        if(!commit([...kept,...removed,...next])) return;
-        markPending([...removed,...next]);
-        syncItems([...removed,...next]);
-        render();
-        shrinkExistingCovers()
+$('#import-data').onclick=()=>$('#file').click();
+$('#open-data').onclick=()=> {
+  $('#account-section').hidden=!currentUser;
+  $('#data-dialog').showModal()
+};
+$('#close-data').onclick=()=>$('#data-dialog').close();
+$('#delete-account').onclick=deleteAccount;
+$('#more').onclick=()=> {
+  shownLimit+=CARD_PAGE;
+  render()
+};
+
+// CSV の書き出しと読み込み
+function csvCell(value) {
+  let text=String(value??'');
+  // 表計算ソフトで数式として実行されないよう、先頭に印を付ける
+  if(/^[=+\-@\t\r]/.test(text)) text="'"+text;
+  return/[",\r\n]/.test(text)?`"${text.replace(/"/g,'""')}"`:text
+}
+function exportCsv() {
+  const header=['タイトル','ジャンル','評価','読んだ日','タグ','メモ','追加日'];
+  const rows=liveItems().sort((a,b)=>new Date(a.createdAt)-new Date(b.createdAt)).map(x=>[x.title,x.genre,x.rating.toFixed(1),x.readAt||'',x.tags.join(';'),x.notes,localDay(new Date(x.createdAt))]);
+  const text='\ufeff'+[header,...rows].map(row=>row.map(csvCell).join(',')).join('\r\n')+'\r\n';
+  const url=URL.createObjectURL(new Blob([text], { type:'text/csv;charset=utf-8' })),a=document.createElement('a');
+  a.href=url;
+  a.download=`yokattana-${localDay()}.csv`;
+  a.click();
+  URL.revokeObjectURL(url)
+}
+function parseCsv(text) {
+  const rows=[];
+  let row=[],cell='',quoted=false;
+  if(text.charCodeAt(0)===0xFEFF) text=text.slice(1);
+  for(let i=0;i<text.length;i++) {
+    const c=text[i];
+    if(quoted) {
+      if(c==='"') {
+        if(text[i+1]==='"') { cell+='"'; i++; }
+        else quoted=false
       }
+      else cell+=c
     }
-    catch {
-      alert('読み込めませんでした。バックアップJSONを選択してください。')
+    else if(c==='"') quoted=true;
+    else if(c===',') { row.push(cell); cell=''; }
+    else if(c==='\n'||c==='\r') {
+      if(c==='\r'&&text[i+1]==='\n') i++;
+      row.push(cell);
+      cell='';
+      rows.push(row);
+      row=[]
     }
-  };
-  r.readAsText(f);
-  x.target.value=''
+    else cell+=c
+  }
+  if(cell!==''||row.length) { row.push(cell); rows.push(row); }
+  return rows.filter(r=>r.some(c=>c.trim()!==''))
+}
+const CSV_FIELDS= {
+  title:['タイトル','書名','作品名','title','name'],
+  genre:['ジャンル','カテゴリ','カテゴリー','種別','genre','category'],
+  rating:['評価','★','rating','score'],
+  readAt:['読んだ日','読了日','鑑賞日','視聴日','日付','readat','date'],
+  tags:['タグ','tags','tag'],
+  notes:['メモ','感想','レビュー','読書メモ(ネタバレ)','読書メモ','コメント','notes','review','comment'],
+  createdAt:['追加日','登録日時','登録日','createdat']
+};
+function csvDay(value) {
+  const m=String(value??'').match(/(\d{4})[\/\-.年]\s*(\d{1,2})[\/\-.月]\s*(\d{1,2})/);
+  return m?validDay(`${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`):null
+}
+function csvItems(text) {
+  const rows=parseCsv(text);
+  if(rows.length<2) return null;
+  const header=rows[0].map(h=>h.replace(/^\ufeff/,'').trim().toLowerCase());
+  const columns=Object.fromEntries(Object.entries(CSV_FIELDS).map(([key,names])=>[key,header.map((h,i)=>names.some(n=>n.toLowerCase()===h)?i:-1).filter(i=>i>=0)]));
+  if(!columns.title.length) return null;
+  const now=new Date().toISOString();
+  return rows.slice(1).map(row=> {
+    const cells=key=>columns[key].map(i=>String(row[i]??'').replace(/^'(?=[=+\-@\t\r])/,'').trim()).filter(Boolean);
+    const stars=cells('rating')[0]||'',rating=/^[★☆]+$/.test(stars)?[...stars].filter(c=>c==='★').length:parseFloat(stars);
+    const added=csvDay(cells('createdAt')[0]);
+    return normalizeItem( {
+      id:crypto.randomUUID(),title:cells('title')[0],genre:cells('genre')[0],rating,
+      tags:cells('tags').join(';').split(/[;；,，、]+/),notes:cells('notes').join('\n\n'),
+      readAt:csvDay(cells('readAt')[0]),createdAt:added?new Date(added+'T00:00:00').toISOString():now,updatedAt:now
+    })
+  }).filter(Boolean)
+}
+async function readText(file) {
+  const buffer=await file.arrayBuffer();
+  try { return new TextDecoder('utf-8', { fatal:true }).decode(buffer); }
+  catch { return new TextDecoder('shift_jis').decode(buffer); }
+}
+function importJson(text) {
+  const o=JSON.parse(text),a=Array.isArray(o)?o:o.items;
+  if(!Array.isArray(a)) throw 0;
+  const imported=a.map(normalizeItem).filter(Boolean);
+  if(!imported.length&&a.length) throw 0;
+  if(!confirm(`${imported.length}件のデータで現在の記録を置き換えます。置き換える前の記録は、バックアップとして自動で保存し、ごみ箱にも${TRASH_DAYS}日間残ります。よろしいですか？`)) return;
+  if(liveItems().length) backup('yokattana-before-import');
+  const now=new Date().toISOString(),ids=new Set(imported.map(x=>x.id));
+  // 読み込みに含まれない既存の記録は、ごみ箱へ移す
+  const removed=state.items.filter(x=>!x.deleted&&!ids.has(x.id)).map(x=>( { ...x,deleted:true,updatedAt:now } ));
+  const kept=state.items.filter(x=>x.deleted&&!ids.has(x.id));
+  const next=imported.map(x=>( { ...x,updatedAt:now } ));
+  if(!commit([...kept,...removed,...next])) return;
+  markPending([...removed,...next]);
+  syncItems([...removed,...next]);
+  render();
+  shrinkExistingCovers()
+}
+function importCsv(text) {
+  const items=csvItems(text);
+  if(!items||!items.length) throw 0;
+  const key=x=>`${x.title}|${x.readAt||''}`,known=new Set(liveItems().map(key));
+  const additions=items.filter(x=>!known.has(key(x)));
+  const skipped=items.length-additions.length;
+  if(!additions.length) { alert(`追加できる記録がありませんでした（${skipped}件は、すでにある記録と同じです）。`); return; }
+  if(!confirm(`${additions.length}件の記録を追加します${skipped?`（同じ記録の${skipped}件は読み飛ばします）`:''}。評価は、このアプリの範囲（★3〜5）に収めます。よろしいですか？`)) return;
+  if(!commit([...state.items,...additions])) return;
+  markPending(additions);
+  syncItems(additions);
+  render();
+  showToast(`${additions.length}件の記録を追加しました。`)
+}
+$('#file').onchange=async x=> {
+  const f=x.target.files[0];
+  x.target.value='';
+  if(!f) return;
+  try {
+    const text=await readText(f);
+    if(/^[\[{]/.test(text.replace(/^\ufeff/,'').trimStart())) importJson(text);
+    else importCsv(text);
+    if($('#data-dialog').open) $('#data-dialog').close()
+  }
+  catch {
+    alert('読み込めませんでした。このアプリで書き出したJSON、またはタイトルの列があるCSVを選んでください。')
+  }
+};
+
+// アカウントの削除（Supabase 側の関数 delete_my_account が必要）
+async function deleteAccount() {
+  if(!currentUser) return;
+  if(!confirm('クラウド上のアカウントと、同期した記録をすべて削除します。この端末の記録も消え、元に戻せません。先にバックアップを書き出しましたか？ 続けますか？')) return;
+  if(prompt('本当に削除するには「削除」と入力してください。')!=='削除') return;
+  try {
+    const { error }=await cloud.rpc('delete_my_account');
+    if(error) throw error
+  }
+  catch(error) {
+    alert(/delete_my_account|function/i.test(String(error?.message))?'アカウントの削除機能が、まだ有効になっていません。supabase-schema.sql の delete_my_account を、Supabase で実行してください。':'削除できませんでした。通信状況を確認して、もう一度お試しください。');
+    return
+  }
+  try { await cloud.auth.signOut(); }
+  catch {}
+  if(currentUser) applySignedOut();
+  $('#data-dialog').close();
+  showToast('アカウントと、クラウド上の記録を削除しました。')
+}
+
+// ごみ箱
+function trashItems() {
+  return state.items.filter(x=>x.deleted&&x.title).sort((a,b)=>new Date(b.updatedAt)-new Date(a.updatedAt))
+}
+function applyTrash(items,change) {
+  const ids=new Set(items.map(x=>x.id)),next=state.items.map(x=>ids.has(x.id)?change(x):x),changed=next.filter(x=>ids.has(x.id));
+  if(!changed.length||!commit(next)) return;
+  markPending(changed);
+  syncItems(changed);
+  render();
+  renderTrash()
+}
+function renderTrash() {
+  const list=$('#trash-list'),items=trashItems();
+  list.innerHTML='';
+  $('#empty-trash').hidden=!items.length;
+  if(!items.length) {
+    const li=document.createElement('li');
+    li.className='manage-empty';
+    li.textContent='ごみ箱は空です';
+    list.append(li)
+  }
+  items.forEach(x=> {
+    const li=document.createElement('li'),name=document.createElement('span'),days=document.createElement('small'),restore=document.createElement('button'),purge=document.createElement('button');
+    const left=Math.max(0,TRASH_DAYS-Math.floor((Date.now()-new Date(x.updatedAt))/86400000));
+    name.className='manage-name';
+    name.textContent=`${x.title}（${x.genre}）`;
+    days.className='trash-days';
+    days.textContent=`あと${left}日`;
+    restore.type='button';
+    restore.className='link';
+    restore.textContent='戻す';
+    restore.onclick=()=>applyTrash([x],y=>( { ...y,deleted:false,updatedAt:new Date().toISOString() } ));
+    purge.type='button';
+    purge.className='link danger';
+    purge.textContent='完全に削除';
+    purge.onclick=()=> {
+      if(!confirm(`「${x.title}」を完全に削除します。元に戻せません。`)) return;
+      const now=new Date().toISOString();
+      applyTrash([x],y=>emptyOf(y,now))
+    };
+    li.append(name,days,restore,purge);
+    list.append(li)
+  })
+}
+$('#open-trash').onclick=()=> {
+  renderTrash();
+  $('#trash-dialog').showModal()
+};
+$('#close-trash').onclick=()=>$('#trash-dialog').close();
+$('#empty-trash').onclick=()=> {
+  const items=trashItems();
+  if(!items.length||!confirm(`ごみ箱の${items.length}件を、すべて完全に削除します。元に戻せません。`)) return;
+  const now=new Date().toISOString();
+  applyTrash(items,y=>emptyOf(y,now))
 };
 $('#readToday').onclick=()=> {
   $('#readAt').value=localDay();
@@ -796,6 +1001,10 @@ window.addEventListener('storage',event=> {
 window.addEventListener('online',flushPending);
 document.addEventListener('visibilitychange',()=> { if(document.visibilityState==='visible') flushPending(); });
 setInterval(flushPending,60000);
+{
+  const next=compactTrash(state.items),changed=next.filter((x,i)=>x!==state.items[i]);
+  if(changed.length) commit(next,true)
+}
 render();
 initializeCloud();
 shrinkExistingCovers()
