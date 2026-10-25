@@ -770,3 +770,16 @@ dialog footer {
 /* コピーなどの操作の反応 */
 button.done { background:var(--sage) !important; color:var(--on-sage) !important; border-color:transparent !important; }
 .toast { z-index:2147483647; }
+
+/* 共有する記録を選ぶ */
+.grid article { position:relative; }
+.pick { position:absolute; top:10px; left:10px; z-index:1; display:grid; place-items:center; width:34px; height:34px; border-radius:50%; background:var(--surface); box-shadow:0 2px 8px #0000004d; cursor:pointer; }
+.pick[hidden] { display:none; }
+.pick input { width:20px; height:20px; margin:0; cursor:pointer; }
+.grid.picking article.picked { outline:3px solid var(--sage); outline-offset:-3px; border-radius:14px; }
+.grid.picking .edit { visibility:hidden; }
+.pick-bar { position:fixed; left:50%; bottom:16px; transform:translateX(-50%); z-index:6; display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:4px 10px; width:max-content; max-width:calc(100vw - 24px); padding:10px 14px; border:1px solid var(--line); border-radius:14px; background:var(--surface); box-shadow:0 12px 30px #00000040; }
+.pick-bar[hidden] { display:none; }
+.pick-count { font-size:13px; font-weight:700; }
+.pick-bar button:disabled { opacity:.5; }
+body:has(.pick-bar:not([hidden])) .site-footer { padding-bottom:110px; }

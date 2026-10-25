@@ -16,7 +16,7 @@
     <link rel="icon" href="icon.svg" type="image/svg+xml">
     <script src="theme.js"></script>
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="styles.css?v=202610252141">
+    <link rel="stylesheet" href="styles.css?v=202610252144">
   </head>
   <body>
     <a class="skip-link" href="#top">本文へ移動</a>
@@ -147,6 +147,9 @@
           </button>
           <button class="link" id="open-share" type="button">
             共有
+          </button>
+          <button class="link" id="start-pick" type="button">
+            選んで共有
           </button>
           <button class="link" id="open-trash" type="button">
             ごみ箱
@@ -444,8 +447,16 @@
         <ul id="review-top" class="manage-list"></ul>
       </form>
     </dialog>
+    <div id="pick-bar" class="pick-bar" role="region" aria-label="共有する記録を選ぶ" hidden>
+      <span id="pick-count" class="pick-count" aria-live="polite"></span>
+      <button class="link" id="pick-all" type="button">絞り込み結果をすべて選ぶ</button>
+      <button class="link" id="pick-clear" type="button">選択を解除</button>
+      <button id="pick-share" type="button">共有リンクを作る</button>
+      <button class="secondary" id="pick-cancel" type="button">やめる</button>
+    </div>
     <template id="card">
       <article>
+        <label class="pick" hidden><input type="checkbox" class="pick-box"></label>
         <button class="open">
           <div class="art">
             <img hidden>
@@ -479,8 +490,8 @@
       </article>
     </template>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js" integrity="sha384-TcHRA3zBbn+Lexh5n+Oil4guNPOS3rjNDpGRAN46u/s/mB2IZ50ceC6TYDU2yvgK" crossorigin="anonymous"></script>
-    <script src="supabase-config.js?v=202610252141"></script>
-    <script src="app.js?v=202610252141"></script>
+    <script src="supabase-config.js?v=202610252144"></script>
+    <script src="app.js?v=202610252144"></script>
   </body>
 </html>
 

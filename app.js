@@ -3,7 +3,7 @@ const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const COVER=/^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+$/;
 const TRASH_DAYS=30,CARD_PAGE=24,TOMBSTONE_DAYS=90,SYNC_CHUNK=20,PAGE_SIZE=100,COVER_LIMIT=150000;
 const cloud=window.supabase?.createClient(window.SUPABASE_CONFIG?.url,window.SUPABASE_CONFIG?.publishableKey);
-let shownLimit=CARD_PAGE,lastView='',currentUser=null,flushing=false,shrinking=false,dirty=false;
+let shownLimit=CARD_PAGE,lastView='',picking=false,currentUser=null,flushing=false,shrinking=false,dirty=false;
 
 // 旧名称で保存されたデータを引き継ぐ
 try {
@@ -314,7 +314,7 @@ function genres() {
 function alltags() {
   return[...new Set(liveItems().flatMap(x=>x.tags))].sort((a,b)=>a.localeCompare(b,'ja'))
 }
-const filters= { genre:new Set(),tag:new Set() },filterKeys= {};
+const filters= { genre:new Set(),tag:new Set() },filterKeys= {},selection=new Set();
 // 選択肢が多いときのために、入力した文字で一覧を絞る
 function applyOptionSearch(root) {
   const q=root.querySelector('.multi-search').value.trim().toLocaleLowerCase('ja');
@@ -389,6 +389,8 @@ function render() {
   $('#notfound').hidden=live.length===0||list.length>0;
   $('#heading').textContent=$('#query').value||filters.genre.size||filters.tag.size?`検索結果 (${list.length})`:`すべての記録 (${live.length})`;
   let tpl=$('#card');
+  grid.classList.toggle('picking',picking);
+  [...selection].filter(id=>!live.some(x=>x.id===id)).forEach(id=>selection.delete(id));
   list.slice(0,shownLimit).forEach(x=> {
     let n=tpl.content.cloneNode(true),img=n.querySelector('img'),letter=n.querySelector('.art span');
     if(x.cover) {
@@ -412,12 +414,21 @@ function render() {
     quote.hidden=!x.quote;
     n.querySelector('.spoiler-badge').hidden=!x.spoiler;
     n.querySelector('footer small').textContent=x.readAt?date(x.readAt+'T00:00:00')+' に読んだ':date(x.createdAt)+' に追加';
-    n.querySelector('.open').onclick=()=>openEditor(x);
-    n.querySelector('.edit').onclick=()=>openEditor(x);
+    const card=n.querySelector('article'),pick=n.querySelector('.pick'),box=n.querySelector('.pick-box');
+    pick.hidden=!picking;
+    box.checked=selection.has(x.id);
+    box.setAttribute('aria-label',`${x.title}を共有に含める`);
+    card.classList.toggle('picked',box.checked);
+    box.onchange=()=> { setPicked(x.id,box.checked); card.classList.toggle('picked',box.checked); };
+    // 選ぶモードでは、カードを押すと編集ではなく、選択の切り替えになる
+    const activate=()=> { if(picking) { box.checked=!box.checked; box.onchange(); } else openEditor(x); };
+    n.querySelector('.open').onclick=activate;
+    n.querySelector('.edit').onclick=activate;
     n.querySelector('.open').setAttribute('aria-label',`${x.title}を開く`);
     n.querySelector('.edit').setAttribute('aria-label',`${x.title}を編集`);
     grid.append(n)
-  })
+  });
+  updatePickBar()
 }
 function preview(v) {
   const box=$('#preview');
@@ -1028,6 +1039,42 @@ function openReview() {
 $('#open-review').onclick=openReview;
 $('#review-year').onchange=drawReview;
 $('#close-review').onclick=()=>$('#review-dialog').close();
+
+// 共有する記録を、手動で選ぶ
+function setPicked(id,on) {
+  if(on) selection.add(id);
+  else selection.delete(id);
+  updatePickBar()
+}
+function pickedItems() {
+  // 画面の並び順を保ち、絞り込みで見えていない選択済みの記録は、最後に足す
+  const shown=visible().filter(x=>selection.has(x.id)),ids=new Set(shown.map(x=>x.id));
+  return[...shown,...liveItems().filter(x=>selection.has(x.id)&&!ids.has(x.id)).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt))]
+}
+function updatePickBar() {
+  const bar=$('#pick-bar');
+  bar.hidden=!picking;
+  if(!picking) return;
+  const count=selection.size;
+  $('#pick-count').textContent=count>SHARE_LIMIT?`${count}件を選択中（共有できるのは${SHARE_LIMIT}件までです）`:`${count}件を選択中`;
+  $('#pick-share').disabled=!count||count>SHARE_LIMIT;
+  $('#pick-clear').disabled=!count;
+  $('#pick-all').textContent=`絞り込み結果をすべて選ぶ（${visible().length}件）`
+}
+function setPicking(on) {
+  picking=on;
+  if(!on) selection.clear();
+  render()
+}
+$('#start-pick').onclick=()=> setPicking(true);
+$('#pick-cancel').onclick=()=> setPicking(false);
+$('#pick-clear').onclick=()=> { selection.clear(); render(); };
+$('#pick-all').onclick=()=> { visible().forEach(x=>selection.add(x.id)); render(); };
+$('#pick-share').onclick=()=> {
+  const items=pickedItems();
+  if(items.length) openShare(items,items.length===1?items[0].title:'選んだ記録','手動で選んだ記録')
+};
+document.addEventListener('keydown',event=> { if(event.key==='Escape'&&picking&&!document.querySelector('dialog[open]')) setPicking(false); });
 
 // 共有リンク（その時点の内容を、読み取り専用のコピーとして公開する）
 const SHARE_LIMIT=100,SHARE_TOKEN=/^[A-Za-z0-9_-]{22,64}$/;

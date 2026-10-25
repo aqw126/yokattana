@@ -279,3 +279,91 @@ test('コピー: クリップボードが使えなくても、別の方法でコ
   }
   finally { delete navigator.clipboard; document.execCommand = execOriginal; }
 });
+
+// ---- 手動で選んで共有 ----
+const cards = () => [...document.querySelectorAll('#grid article')];
+const cardOf = title => cards().find(c => c.querySelector('h3').textContent === title);
+
+test('選んで共有: 選ぶモードでは、選択用のチェックが出て、押しても編集画面は開かない', () => {
+  resetApp();
+  setItems([make({ title: 'A' }), make({ title: 'B' })]);
+  eq(cards().every(c => c.querySelector('.pick').hidden), true);
+  $('#start-pick').click();
+  assert(picking && !$('#pick-bar').hidden, 'bar shown');
+  eq(cards().every(c => !c.querySelector('.pick').hidden), true);
+  cardOf('A').querySelector('.open').click();
+  assert(!$('#dialog').open, 'editor must not open while picking');
+  eq(selection.size, 1);
+  assert(cardOf('A').classList.contains('picked'), 'picked style');
+  eq($('#pick-count').textContent, '1件を選択中');
+  cardOf('A').querySelector('.open').click();
+  eq(selection.size, 0);
+  setPicking(false);
+  cardOf('A').querySelector('.open').click();
+  assert($('#dialog').open, 'editor opens again after leaving the mode');
+  $('#dialog').close();
+});
+
+test('選んで共有: 選んだ記録だけが共有の対象になり、画面の並びを保つ', () => {
+  resetApp();
+  setItems([make({ title: 'A', createdAt: ago(3) }), make({ title: 'B', createdAt: ago(2) }), make({ title: 'C', createdAt: ago(1) })]);
+  $('#start-pick').click();
+  cardOf('A').querySelector('.pick-box').click();
+  cardOf('C').querySelector('.pick-box').click();
+  eq(pickedItems().map(x => x.title), ['C', 'A']);
+  currentUser = { id: 'u1' };
+  $('#pick-share').click();
+  eq(shareDraft.items.map(x => x.title), ['C', 'A']);
+  eq(shareDraft.criteria, '手動で選んだ記録');
+  assert($('#share-summary').textContent.includes('2件'), 'summary');
+  $('#share-dialog').close();
+  setPicking(false);
+});
+
+test('選んで共有: 絞り込んで選び、絞り込みを変えても選択は残る', () => {
+  resetApp();
+  setItems([make({ title: 'A', genre: '本' }), make({ title: 'B', genre: '漫画' }), make({ title: 'C', genre: '本' })]);
+  $('#start-pick').click();
+  filters.genre.add('本');
+  render();
+  $('#pick-all').click();
+  eq(selection.size, 2);
+  filters.genre.clear();
+  filters.genre.add('漫画');
+  render();
+  cardOf('B').querySelector('.pick-box').click();
+  eq(pickedItems().map(x => x.title).sort(), ['A', 'B', 'C']);
+  eq($('#pick-count').textContent, '3件を選択中');
+  $('#pick-clear').click();
+  eq(selection.size, 0);
+  assert($('#pick-share').disabled, 'share disabled with nothing picked');
+  setPicking(false);
+});
+
+test('選んで共有: 100件を超えると共有できない。やめると選択が消える', () => {
+  resetApp();
+  setItems(Array.from({ length: 101 }, (_, i) => make({ title: 'T' + i })));
+  $('#start-pick').click();
+  $('#pick-all').click();
+  assert($('#pick-share').disabled && $('#pick-count').textContent.includes('100件まで'), 'limit shown');
+  $('#pick-cancel').click();
+  eq([picking, selection.size, $('#pick-bar').hidden], [false, 0, true]);
+});
+
+test('選んで共有: 削除した記録は選択から外れ、Escでモードを抜ける', () => {
+  resetApp();
+  const item = make({ title: 'A' });
+  setItems([item, make({ title: 'B' })]);
+  $('#start-pick').click();
+  cardOf('A').querySelector('.pick-box').click();
+  setItems(state.items.map(x => x.id === item.id ? { ...x, deleted: true } : x));
+  eq(selection.size, 0);
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+  eq(picking, false);
+});
+
+test('選んで共有: 選択用のチェックに、作品名入りの名前がある', () => {
+  resetApp();
+  setItems([make({ title: '火車' })]);
+  eq(cards()[0].querySelector('.pick-box').getAttribute('aria-label'), '火車を共有に含める');
+});
