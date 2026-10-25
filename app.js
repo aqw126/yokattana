@@ -40,7 +40,11 @@ function updateSyncStatus(failed=false) {
   else if(failed||pending.size) message=pending.size?`同期待ち ${pending.size}件`:'同期に失敗しました';
   else { message='自動同期中'; connected=true; }
   status.textContent=message;
-  status.classList.toggle('connected',connected)
+  status.classList.toggle('connected',connected);
+  const label=$('#account-label'),account=currentUser?.email||currentUser?.user_metadata?.email||currentUser?.user_metadata?.name||'';
+  label.hidden=!currentUser;
+  label.textContent=currentUser?`ログイン中：${account||'Googleアカウント'}`:'';
+  label.title=account
 }
 function isNewer(a,b) {
   return new Date(a.updatedAt)>new Date(b.updatedAt)

@@ -657,3 +657,6 @@ dialog footer {
 .trash-footer { margin:12px 0 0; text-align:right; }
 .trash-days { color:var(--muted); font-size:12px; }
 #trash-dialog, #data-dialog { width:min(560px,calc(100vw - 28px)); max-height:calc(100vh - 40px); }
+.account-label { max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.account-label[hidden] { display:none; }
+@media(max-width:720px) { .account-label { max-width:none; order:3; flex-basis:100%; } }
