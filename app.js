@@ -35,10 +35,11 @@ function showToast(message) {
 function updateSyncStatus(failed=false) {
   const status=$('#sync-status');
   let message='この端末に保存中',connected=false;
-  if(!cloud) message='同期設定が見つかりません';
+  if(!navigator.onLine) message=currentUser?`オフライン（接続すると同期します）`:'オフライン（この端末に保存中）';
+  else if(!cloud) message='同期設定が見つかりません';
   else if(!currentUser) message='ログインすると自動同期';
   else if(failed||pending.size) message=pending.size?`同期待ち ${pending.size}件`:'同期に失敗しました';
-  else { message='自動同期中'; connected=true; }
+  else if(navigator.onLine) { message='自動同期中'; connected=true; }
   status.textContent=message;
   status.classList.toggle('connected',connected);
   const label=$('#account-label'),account=currentUser?.email||currentUser?.user_metadata?.email||currentUser?.user_metadata?.name||'';
@@ -488,6 +489,7 @@ function openEditor(x) {
   $('#kicker').textContent=x?'EDIT ENTRY':'NEW ENTRY';
   $('#modalTitle').textContent=x?'記録を編集':'記録を追加';
   $('#delete').hidden=!x;
+  $('#share-one').hidden=!x;
   if(x) {
     $('#id').value=x.id;
     $('#title').value=x.title;
@@ -1025,13 +1027,140 @@ $('#open-review').onclick=openReview;
 $('#review-year').onchange=drawReview;
 $('#close-review').onclick=()=>$('#review-dialog').close();
 
+// 共有リンク（その時点の内容を、読み取り専用のコピーとして公開する）
+const SHARE_LIMIT=100,SHARE_TOKEN=/^[A-Za-z0-9_-]{22,64}$/;
+let shareDraft= { items:[],criteria:'' };
+function makeShareToken() {
+  const bytes=crypto.getRandomValues(new Uint8Array(16));
+  return btoa(String.fromCharCode(...bytes)).replaceAll('+','-').replaceAll('/','_').replaceAll('=','')
+}
+// mode: none = メモ・引用を含めない / safe = ネタバレなしの記録だけ / all = すべて（ネタバレ記録には印を付ける）
+function sharePayload(items,{ title,criteria,mode }) {
+  return {
+    v:1,title:String(title||'').slice(0,100),criteria:String(criteria||'').slice(0,200),sharedAt:new Date().toISOString(),
+    items:items.slice(0,SHARE_LIMIT).map(x=> {
+      const out= { title:x.title,genre:x.genre,rating:x.rating,readAt:x.readAt||null,tags:[...x.tags] };
+      if(mode!=='none'&&(mode==='all'||!x.spoiler)&&(x.notes||x.quote)) { out.notes=x.notes||''; out.quote=x.quote||''; out.spoiler=!!x.spoiler; }
+      return out
+    })
+  }
+}
+function criteriaText() {
+  const parts=[],query=$('#query').value.trim();
+  if(query) parts.push(`検索：${query}`);
+  if(filters.genre.size) parts.push(`ジャンル：${[...filters.genre].join('、')}`);
+  if(filters.tag.size) parts.push(`タグ：${[...filters.tag].join('、')}`);
+  return parts.join(' / ')||'すべての記録'
+}
+function shareUrl(id) {
+  return new URL(`share.html#${id}`,location.href).href
+}
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); showToast('コピーしました。'); }
+  catch { prompt('このリンクをコピーしてください',text); }
+}
+function openShare(items,title,criteria) {
+  shareDraft= { items,criteria };
+  $('#share-title').value=title;
+  $('#share-login').hidden=!!currentUser;
+  $('#share-create').disabled=!currentUser;
+  $('#share-summary').textContent=`共有する記録：${items.length}件（${criteria}）`+(items.length>SHARE_LIMIT?`。共有できるのは${SHARE_LIMIT}件までです。絞り込んでください。`:'');
+  $('#share-result').hidden=true;
+  $('#share-native').hidden=!navigator.share;
+  $('#share-dialog').showModal();
+  loadMyShares()
+}
+async function createShare() {
+  if(!currentUser) return;
+  const items=shareDraft.items;
+  if(!items.length) { alert('共有する記録がありません。'); return; }
+  if(items.length>SHARE_LIMIT) { alert(`共有できるのは${SHARE_LIMIT}件までです。絞り込んでください。`); return; }
+  const mode=document.querySelector('input[name=share-mode]:checked').value,days=Number($('#share-expiry').value);
+  const title=$('#share-title').value.trim()||'共有した記録';
+  const row= { id:makeShareToken(),user_id:currentUser.id,title:title.slice(0,100),item_count:items.length,payload:sharePayload(items,{ title,criteria:shareDraft.criteria,mode }),expires_at:days?new Date(Date.now()+days*86400000).toISOString():null };
+  try {
+    const { error }=await cloud.from('shares').insert(row);
+    if(error) throw error
+  }
+  catch(error) {
+    const message=String(error?.message||'');
+    alert(/too many/i.test(message)?'作成済みのリンクが多すぎます（50件まで）。不要なリンクを停止してください。':/shares|relation|schema cache|does not exist/i.test(message)?'共有機能がまだ有効になっていません。supabase-schema.sql の shares の部分を、Supabase で実行してください。':'共有リンクを作れませんでした。通信状況を確認して、もう一度お試しください。');
+    return
+  }
+  $('#share-url').value=shareUrl(row.id);
+  $('#share-result').hidden=false;
+  $('#share-url').select();
+  loadMyShares()
+}
+async function loadMyShares() {
+  const list=$('#share-list');
+  list.innerHTML='';
+  const note=text=> {
+    const li=document.createElement('li');
+    li.className='manage-empty';
+    li.textContent=text;
+    list.append(li)
+  };
+  if(!currentUser) return note('ログインすると、作成済みのリンクが見られます');
+  try {
+    const { data,error }=await cloud.from('shares').select('id,title,item_count,created_at,expires_at').order('created_at', { ascending:false });
+    if(error) throw error;
+    if(!data.length) return note('まだありません');
+    data.forEach(row=> {
+      const li=document.createElement('li'),name=document.createElement('span'),when=document.createElement('small'),copy=document.createElement('button'),stop=document.createElement('button');
+      const expired=row.expires_at&&new Date(row.expires_at)<new Date();
+      name.className='manage-name';
+      name.textContent=`${row.title}（${row.item_count}件）`;
+      when.className='trash-days';
+      when.textContent=expired?'期限切れ':row.expires_at?`${date(row.expires_at)}まで`:'期限なし';
+      copy.type='button';
+      copy.className='link';
+      copy.textContent='コピー';
+      copy.onclick=()=>copyText(shareUrl(row.id));
+      stop.type='button';
+      stop.className='link danger';
+      stop.textContent='停止';
+      stop.onclick=()=>stopShare(row);
+      li.append(name,when,copy,stop);
+      list.append(li)
+    })
+  }
+  catch { note('リンクの一覧を読み込めませんでした'); }
+}
+async function stopShare(row) {
+  if(!confirm(`「${row.title}」の共有を停止します。このリンクでは、見られなくなります。`)) return;
+  try {
+    const { error }=await cloud.from('shares').delete().eq('id',row.id);
+    if(error) throw error
+  }
+  catch { alert('停止できませんでした。通信状況を確認して、もう一度お試しください。'); return; }
+  loadMyShares()
+}
+$('#open-share').onclick=()=>openShare(visible(),criteriaText()==='すべての記録'?'私のよかった記録':criteriaText(),criteriaText());
+$('#share-one').onclick=()=> {
+  const item=state.items.find(x=>x.id===$('#id').value);
+  if(!item||(dirty&&!confirm(DISCARD_MESSAGE))) return;
+  closeEditor(true);
+  openShare([item],item.title,`「${item.title}」1件`)
+};
+$('#share-create').onclick=createShare;
+$('#share-copy').onclick=()=>copyText($('#share-url').value);
+$('#share-native').onclick=()=> { navigator.share?.({ title:$('#share-title').value||'よかっ棚',url:$('#share-url').value }).catch(()=> {}); };
+$('#close-share').onclick=()=>$('#share-dialog').close();
+
+// オフラインでも開けるように、Service Worker を登録する（https のときだけ）
+if('serviceWorker' in navigator&&location.protocol==='https:') {
+  window.addEventListener('load',()=> { navigator.serviceWorker.register('sw.js').catch(()=> {}); });
+}
+
 // 別のタブでの変更を取り込む（編集中は触らない）
 window.addEventListener('storage',event=> {
   if(event.key!==KEY||!event.newValue) return;
   state.items=mergeItems(state.items,load());
   if(!$('#dialog').open) render()
 });
-window.addEventListener('online',flushPending);
+window.addEventListener('online',()=> { updateSyncStatus(); flushPending(); });
+window.addEventListener('offline',()=>updateSyncStatus());
 document.addEventListener('visibilitychange',()=> { if(document.visibilityState==='visible') flushPending(); });
 setInterval(flushPending,60000);
 {

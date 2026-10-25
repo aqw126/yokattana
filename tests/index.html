@@ -22,7 +22,9 @@
           window.SUPABASE_CONFIG = { url: 'http://fake.invalid', publishableKey: 'fake' };
           window.supabase = { createClient: () => window.fakeCloud };
           await loadScript('../app.js');
+          await loadScript('../share.js');
           await loadScript('app.test.js');
+          await loadScript('feature.test.js');
           await loadScript('a11y.test.js');
           await runAll();
         } catch (error) {

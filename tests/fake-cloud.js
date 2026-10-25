@@ -9,6 +9,8 @@ window.fakeCloud = (() => {
       cloud.rows.clear();
       cloud.fail = false;
       cloud.rpcError = null;
+      cloud.insertError = null;
+      cloud.shares.clear();
       cloud.calls = [];
     },
     auth: {
@@ -17,7 +19,24 @@ window.fakeCloud = (() => {
       signOut: async () => ({ error: null }),
       signInWithOAuth: async () => ({ error: null })
     },
-    from() {
+    shares: new Map(),
+    from(table) {
+      if (table === 'shares') {
+        return {
+          insert: async row => {
+            cloud.calls.push(['insert-share', row.id]);
+            if (cloud.insertError) return { error: cloud.insertError };
+            cloud.shares.set(row.id, row);
+            return { error: null };
+          },
+          select: () => ({
+            order: async () => ({ data: [...cloud.shares.values()].map(({ id, title, item_count, created_at, expires_at }) => ({ id, title, item_count, created_at: created_at || new Date().toISOString(), expires_at })), error: null })
+          }),
+          delete: () => ({
+            eq: async (column, id) => { cloud.shares.delete(id); return { error: null }; }
+          })
+        };
+      }
       return {
         upsert: async rows => {
           cloud.calls.push(['upsert', rows.length]);
