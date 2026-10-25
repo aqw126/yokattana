@@ -194,10 +194,10 @@ function validDate(v,fallback) {
   return typeof v==='string'&&!isNaN(t)?t.toISOString():fallback
 }
 function hasContent(x) {
-  return!!(x.title||x.notes||x.cover||x.tags.length)
+  return!!(x.title||x.notes||x.quote||x.cover||x.tags.length)
 }
 function emptyOf(x,now) {
-  return { ...x,title:'',notes:'',cover:null,tags:[],readAt:null,deleted:true,updatedAt:now }
+  return { ...x,title:'',notes:'',quote:'',spoiler:false,cover:null,tags:[],readAt:null,deleted:true,updatedAt:now }
 }
 // ごみ箱に入れて30日たった記録は、中身を消して、削除したことだけを残す
 function compactTrash(list) {
@@ -228,6 +228,8 @@ function normalizeItem(raw) {
     rating:Math.min(5,Math.max(3,Number(raw.rating)||3)),
     tags:Array.isArray(raw.tags)?[...new Set(raw.tags.map(t=>String(t).trim()).filter(Boolean))]:[],
     notes:String(raw.notes??'').trim(),
+    quote:String(raw.quote??'').trim().slice(0,1000),
+    spoiler:raw.spoiler===true,
     cover:typeof raw.cover==='string'&&COVER.test(raw.cover)?raw.cover:null,
     readAt:validDay(raw.readAt),createdAt,updatedAt:validDate(raw.updatedAt,createdAt),deleted
   }
@@ -346,7 +348,7 @@ function date(v) {
 }
 function visible() {
   let q=$('#query').value.trim().toLocaleLowerCase('ja'),g=filters.genre,t=filters.tag,s=$('#sort').value,r=liveItems().filter(x=> {
-    let text=[x.title,x.genre,...x.tags,x.notes||''].join(' ').toLocaleLowerCase('ja');
+    let text=[x.title,x.genre,...x.tags,x.notes||'',x.quote||''].join(' ').toLocaleLowerCase('ja');
     return(!q||text.includes(q))&&(!g.size||g.has(x.genre))&&[...t].every(tag=>x.tags.includes(tag))
   });
   return r.sort((a,b)=>compareItems(s,a,b))
@@ -402,6 +404,10 @@ function render() {
     let p=n.querySelector('.cardbody p');
     p.textContent=x.notes||'';
     p.hidden=!x.notes;
+    const quote=n.querySelector('blockquote');
+    quote.textContent=x.quote||'';
+    quote.hidden=!x.quote;
+    n.querySelector('.spoiler-badge').hidden=!x.spoiler;
     n.querySelector('footer small').textContent=x.readAt?date(x.readAt+'T00:00:00')+' に読んだ':date(x.createdAt)+' に追加';
     n.querySelector('.open').onclick=()=>openEditor(x);
     n.querySelector('.edit').onclick=()=>openEditor(x);
@@ -491,6 +497,8 @@ function openEditor(x) {
     state.formTags=[...(x.tags||[])];
     renderFormTags();
     $('#notes').value=x.notes||'';
+    $('#quote').value=x.quote||'';
+    $('#spoiler').checked=!!x.spoiler;
     $('#readAt').value=x.readAt||'';
     state.cover=x.cover||null;
     preview(state.cover)
@@ -582,7 +590,7 @@ $('#form').onsubmit=x=> {
   x.preventDefault();
   addFormTag();
   let id=$('#id').value,old=state.items.find(x=>x.id===id),entry= {
-    id:id||crypto.randomUUID(),title:$('#title').value.trim(),genre:$('#entryGenre').value.trim(),rating:Number($('#rating').value),readAt:validDay($('#readAt').value),tags:[...state.formTags],notes:$('#notes').value.trim(),cover:state.cover,createdAt:old?.createdAt||new Date().toISOString(),updatedAt:new Date().toISOString(),deleted:false
+    id:id||crypto.randomUUID(),title:$('#title').value.trim(),genre:$('#entryGenre').value.trim(),rating:Number($('#rating').value),readAt:validDay($('#readAt').value),tags:[...state.formTags],notes:$('#notes').value.trim(),quote:$('#quote').value.trim(),spoiler:$('#spoiler').checked,cover:state.cover,createdAt:old?.createdAt||new Date().toISOString(),updatedAt:new Date().toISOString(),deleted:false
   };
   if(!commit(old?state.items.map(x=>x.id===id?entry:x):[...state.items,entry])) return;
   markPending([entry]);
@@ -650,8 +658,8 @@ function csvCell(value) {
   return/[",\r\n]/.test(text)?`"${text.replace(/"/g,'""')}"`:text
 }
 function exportCsv() {
-  const header=['タイトル','ジャンル','評価','読んだ日','タグ','メモ','追加日'];
-  const rows=liveItems().sort((a,b)=>new Date(a.createdAt)-new Date(b.createdAt)).map(x=>[x.title,x.genre,x.rating.toFixed(1),x.readAt||'',x.tags.join(';'),x.notes,localDay(new Date(x.createdAt))]);
+  const header=['タイトル','ジャンル','評価','読んだ日','タグ','メモ','引用','ネタバレ','追加日'];
+  const rows=liveItems().sort((a,b)=>new Date(a.createdAt)-new Date(b.createdAt)).map(x=>[x.title,x.genre,x.rating.toFixed(1),x.readAt||'',x.tags.join(';'),x.notes,x.quote,x.spoiler?'あり':'',localDay(new Date(x.createdAt))]);
   const text='\ufeff'+[header,...rows].map(row=>row.map(csvCell).join(',')).join('\r\n')+'\r\n';
   const url=URL.createObjectURL(new Blob([text], { type:'text/csv;charset=utf-8' })),a=document.createElement('a');
   a.href=url;
@@ -693,6 +701,8 @@ const CSV_FIELDS= {
   readAt:['読んだ日','読了日','鑑賞日','視聴日','日付','readat','date'],
   tags:['タグ','tags','tag'],
   notes:['メモ','感想','レビュー','読書メモ(ネタバレ)','読書メモ','コメント','notes','review','comment'],
+  quote:['引用','名言','quote'],
+  spoiler:['ネタバレ','spoiler'],
   createdAt:['追加日','登録日時','登録日','createdat']
 };
 function csvDay(value) {
@@ -712,7 +722,7 @@ function csvItems(text) {
     const added=csvDay(cells('createdAt')[0]);
     return normalizeItem( {
       id:crypto.randomUUID(),title:cells('title')[0],genre:cells('genre')[0],rating,
-      tags:cells('tags').join(';').split(/[;；,，、]+/),notes:cells('notes').join('\n\n'),
+      tags:cells('tags').join(';').split(/[;；,，、]+/),notes:cells('notes').join('\n\n'),quote:cells('quote')[0],spoiler:/^(1|true|yes|あり|有|○|はい)$/i.test(cells('spoiler')[0]||''),
       readAt:csvDay(cells('readAt')[0]),createdAt:added?new Date(added+'T00:00:00').toISOString():now,updatedAt:now
     })
   }).filter(Boolean)

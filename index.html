@@ -16,7 +16,7 @@
     <link rel="icon" href="icon.svg" type="image/svg+xml">
     <script src="theme.js"></script>
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="styles.css?v=202610252120">
+    <link rel="stylesheet" href="styles.css?v=202610252121">
   </head>
   <body>
     <a class="skip-link" href="#top">本文へ移動</a>
@@ -269,6 +269,17 @@
               <textarea id="notes" rows="6" maxlength="2000" placeholder="心に残った場面、あとで読み返したいことなど。">
               </textarea>
             </label>
+            <label>
+              引用・心に残った一文
+              <em class="optional">
+                任意
+              </em>
+              <textarea id="quote" rows="3" maxlength="1000" placeholder="作品の中の、心に残った言葉など。"></textarea>
+            </label>
+            <label class="check">
+              <input id="spoiler" type="checkbox">
+              メモ・引用にネタバレを含む
+            </label>
           </div>
         </section>
         <footer>
@@ -397,6 +408,7 @@
               </b>
               <strong>
               </strong>
+              <i class="spoiler-badge" hidden>ネタバレ</i>
             </div>
             <h3>
             </h3>
@@ -404,6 +416,7 @@
             </div>
             <p>
             </p>
+            <blockquote hidden></blockquote>
           </div>
         </button>
         <footer>
@@ -416,8 +429,8 @@
       </article>
     </template>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js" integrity="sha384-TcHRA3zBbn+Lexh5n+Oil4guNPOS3rjNDpGRAN46u/s/mB2IZ50ceC6TYDU2yvgK" crossorigin="anonymous"></script>
-    <script src="supabase-config.js?v=202610252120"></script>
-    <script src="app.js?v=202610252120"></script>
+    <script src="supabase-config.js?v=202610252121"></script>
+    <script src="app.js?v=202610252121"></script>
   </body>
 </html>
 

@@ -734,3 +734,9 @@ dialog footer {
     color-scheme:dark;
   }
 }
+
+.check { display:flex !important; align-items:center; gap:8px; font-weight:400; font-size:13px; }
+.check input { width:auto !important; padding:0 !important; border:0 !important; }
+.cardbody blockquote { margin:8px 0 0; padding:2px 0 2px 10px; border-left:3px solid var(--sage); color:var(--muted); font-size:12px; line-height:1.7; overflow-wrap:anywhere; }
+.cardbody blockquote[hidden], .spoiler-badge[hidden] { display:none; }
+.spoiler-badge { font-style:normal; font-size:10px; padding:1px 6px; border-radius:10px; background:var(--pale); color:var(--warm); }
