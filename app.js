@@ -24,6 +24,14 @@ function savePending() {
   try { localStorage.setItem(PENDING_KEY,JSON.stringify([...pending])); }
   catch {}
 }
+let toastTimer;
+function showToast(message) {
+  const toast=$('#toast');
+  toast.textContent=message;
+  toast.hidden=false;
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=> { toast.hidden=true; },5000)
+}
 function updateSyncStatus(failed=false) {
   const status=$('#sync-status');
   let message='この端末に保存中',connected=false;
@@ -159,6 +167,7 @@ async function toggleAuthentication() {
     try { await cloud.auth.signOut(); }
     catch {}
     if(currentUser) applySignedOut();
+    showToast('ログアウトしました。この端末の記録は消去しました。ログインすると、同期した記録が再び読み込まれます。');
     return
   }
   setAuthMessage();
