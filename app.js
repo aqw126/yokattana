@@ -523,6 +523,23 @@ function backup(prefix='yokattana') {
   a.click();
   URL.revokeObjectURL(u)
 }
+// 表示テーマ（自動 → ライト → ダーク）
+const THEMES=['auto','light','dark'],THEME_NAMES= { auto:'自動',light:'ライト',dark:'ダーク' };
+function currentTheme() {
+  const value=document.documentElement.getAttribute('data-theme');
+  return THEMES.includes(value)?value:'auto'
+}
+function applyTheme(theme) {
+  if(theme==='auto') document.documentElement.removeAttribute('data-theme');
+  else document.documentElement.setAttribute('data-theme',theme);
+  try { localStorage.setItem('yokattana-theme',theme); }
+  catch {}
+  const button=$('#theme-toggle');
+  button.textContent=`◐ ${THEME_NAMES[theme]}`;
+  button.setAttribute('aria-label',`表示テーマ：${THEME_NAMES[theme]}（押すと切り替え）`)
+}
+$('#theme-toggle').onclick=()=>applyTheme(THEMES[(THEMES.indexOf(currentTheme())+1)%THEMES.length]);
+applyTheme(currentTheme());
 $('#auth-button').onclick=toggleAuthentication;
 $('#google-button').onclick=signInWithGoogle;
 $('#close-auth').onclick=()=>$('#auth-dialog').close();
