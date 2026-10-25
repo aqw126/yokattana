@@ -596,3 +596,10 @@ dialog footer {
 .auth-fields input:focus { border-color:var(--sage); box-shadow:0 0 0 3px #4d725d1f; }
 .auth-message { min-height:20px; margin:14px 0 0; color:var(--muted); font-size:12px; }
 .auth-dialog footer { justify-content:flex-end; }
+
+.site-footer { text-align:center; margin:0; padding:24px 16px 40px; font-size:12px; }
+.site-footer a, .policy a { color:var(--sage); }
+.policy { max-width:720px; line-height:1.9; font-size:14px; padding:40px 16px 64px; }
+.policy h1 { font-family:Georgia,"Yu Mincho",serif; font-size:28px; margin:16px 0 20px; }
+.policy h2 { font-size:16px; margin:32px 0 8px; }
+.policy .muted { color:var(--muted); }
