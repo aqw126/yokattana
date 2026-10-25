@@ -486,7 +486,157 @@ function addFormTag() {
   dirty=true;
   renderFormTags()
 }
+// 作品の自動入力: タイトルで、本（国立国会図書館サーチ）と漫画・アニメ（AniList）を探す
+const ANILIST='https://graphql.anilist.co',NDL='https://ndlsearch.ndl.go.jp/api/opensearch',WORK_TAGS=6;
+const ANILIST_QUERY='query($q:String){Page(perPage:8){media(search:$q,isAdult:false,sort:SEARCH_MATCH){type format title{native romaji} genres startDate{year} coverImage{large medium} staff(perPage:3,sort:RELEVANCE){edges{role node{name{native full}}}} studios(isMain:true){nodes{name}}}}}';
+const ANILIST_GENRES= {
+  Action:'アクション',Adventure:'冒険',Comedy:'コメディ',Drama:'ドラマ',Fantasy:'ファンタジー',Horror:'ホラー','Mahou Shoujo':'魔法少女',Mecha:'ロボット',Music:'音楽',Mystery:'ミステリー',Psychological:'心理',Romance:'恋愛','Sci-Fi':'SF','Slice of Life':'日常',Sports:'スポーツ',Supernatural:'超常',Thriller:'サスペンス'
+};
+// ジャンル名の候補。すでに使っている名前があれば、それを優先する
+const WORK_GENRES= { anime:['アニメ'],manga:['漫画','マンガ','コミック'],lightnovel:['ライトノベル','ラノベ','小説'],novel:['小説'],book:['本','書籍'] };
+let workSearchId=0;
+function workKey(v) {
+  return String(v||'').normalize('NFKC').replace(/[\s・:：\-－]/g,'').toLocaleLowerCase('ja')
+}
+function pickGenre(kind) {
+  const names=WORK_GENRES[kind]||WORK_GENRES.book,have=genres();
+  return names.find(x=>have.includes(x))||names[0]
+}
+function personName(raw) {
+  // 「宮部, みゆき, 1960-」「宮部／みゆき」→「宮部みゆき」
+  const name=String(raw||'').replace(/,\s*\d{4}-(\d{4})?\s*$/,'').trim();
+  return /[぀-ヿ㐀-鿿]/.test(name)?name.replace(/[\s,，／/]+/g,''):name.replace(/\s*,\s*/g,' ')
+}
+function parseAniList(json) {
+  return(json?.data?.Page?.media||[]).map(m=> {
+    const anime=m.type==='ANIME',kind=anime?'anime':m.format==='NOVEL'?'lightnovel':'manga';
+    const creator=anime?m.studios?.nodes?.[0]?.name:(m.staff?.edges||[]).find(x=>/^(Story|Original Creator)/.test(x.role))?.node?.name;
+    const author=typeof creator==='string'?creator:creator?.native||creator?.full||'';
+    const genreTags=(m.genres||[]).map(g=>ANILIST_GENRES[g]).filter(Boolean);
+    return {
+      source:'anilist',kind,title:(m.title?.native||m.title?.romaji||'').trim(),author:personName(author),year:m.startDate?.year||null,
+      tags:[...new Set([personName(author),...genreTags].filter(Boolean))].slice(0,WORK_TAGS),
+      thumb:m.coverImage?.medium||'',cover:m.coverImage?.large||m.coverImage?.medium||''
+    }
+  }).filter(x=>x.title)
+}
+function parseNdl(xml,query) {
+  const doc=new DOMParser().parseFromString(xml,'application/xml'),q=workKey(query),groups=new Map();
+  const text=(item,name)=>[...item.getElementsByTagName(name)].map(x=>x.textContent.trim()).filter(Boolean);
+  for(const item of doc.getElementsByTagName('item')) {
+    const title=text(item,'dc:title')[0]||'',key=workKey(title);
+    // 曖昧一致の結果が多いので、入力した文字を含むタイトルだけを残す
+    if(!key.includes(q)) continue;
+    const author=personName(text(item,'dc:creator')[0]),ndc=text(item,'dc:subject').find(x=>/^\d{3}/.test(x))||'';
+    const group=`${key}|${workKey(author)}`,found=groups.get(group);
+    if(found) { found.hits++; continue; }
+    groups.set(group, {
+      source:'ndl',kind:ndc.startsWith('726')?'manga':/^9\d3/.test(ndc)?'novel':'book',title,author,year:Number(text(item,'dc:date')[0]?.slice(0,4))||null,
+      tags:author?[author]:[],thumb:'',cover:'',hits:1,exact:key===q
+    })
+  }
+  // 完全一致を先に、同じ本の版が多いもの（よく知られた本）を上に
+  return[...groups.values()].sort((a,b)=>b.exact-a.exact||b.hits-a.hits).slice(0,5).map(({ hits,exact,...x })=>x)
+}
+async function searchAniList(query) {
+  const r=await fetch(ANILIST, { method:'POST',headers: { 'Content-Type':'application/json',Accept:'application/json' },body:JSON.stringify( { query:ANILIST_QUERY,variables: { q:query } }) });
+  if(!r.ok) throw new Error(`AniList ${r.status}`);
+  return parseAniList(await r.json())
+}
+async function searchNdl(query) {
+  const r=await fetch(`${NDL}?${new URLSearchParams( { title:query,mediatype:'books',cnt:'100' })}`);
+  if(!r.ok) throw new Error(`NDL ${r.status}`);
+  return parseNdl(await r.text(),query)
+}
+const WORK_KIND_NAMES= { anime:'アニメ',manga:'漫画',lightnovel:'ライトノベル',novel:'小説',book:'本' };
+function closeWorkResults(message='') {
+  workSearchId++;
+  $('#work-results').hidden=true;
+  $('#work-results').innerHTML='';
+  $('#work-status').textContent=message
+}
+function workOption(work) {
+  const button=document.createElement('button'),art=document.createElement('span'),info=document.createElement('span'),name=document.createElement('b'),meta=document.createElement('small');
+  button.type='button';
+  button.className='work-result';
+  art.className='work-thumb';
+  art.setAttribute('aria-hidden','true');
+  if(work.thumb) {
+    const img=document.createElement('img');
+    img.src=work.thumb;
+    img.alt='';
+    img.loading='lazy';
+    art.append(img)
+  }
+  else art.textContent=WORK_KIND_NAMES[work.kind].slice(0,1);
+  name.textContent=work.title;
+  meta.textContent=[WORK_KIND_NAMES[work.kind],work.year,work.author].filter(Boolean).join('・');
+  info.append(name,meta);
+  button.append(art,info);
+  button.onclick=()=>applyWork(work);
+  return button
+}
+// 本の検索は時間がかかるので、先に届いた結果から順に出す
+async function runWorkSearch() {
+  const query=$('#title').value.trim(),box=$('#work-results');
+  closeWorkResults();
+  const id=workSearchId;
+  if(!query) {
+    $('#work-status').textContent='タイトルを入力してから検索してください。';
+    $('#title').focus();
+    return
+  }
+  $('#work-status').textContent='検索しています…';
+  const searches=[searchAniList(query),searchNdl(query)];
+  let found=0,failed=0,left=searches.length;
+  const status=()=> {
+    if(left) return found?`${found}件の候補が見つかりました。ほかの候補も探しています…`:'検索しています…';
+    if(failed===searches.length) return'作品を検索できませんでした。通信状況を確かめて、もう一度お試しください。';
+    if(!found) return'見つかりませんでした。別の書き方でもお試しください。';
+    return`${found}件の候補が見つかりました。選ぶと入力されます。${failed?'（一部の検索に失敗しました）':''}`
+  };
+  await Promise.all(searches.map(search=>search.then(list=> {
+    if(id!==workSearchId) return;
+    list.forEach(work=>box.append(workOption(work)));
+    found+=list.length;
+    box.hidden=!found
+  },()=> { failed++; }).finally(()=> {
+    left--;
+    if(id===workSearchId) $('#work-status').textContent=status()
+  })))
+}
+async function fetchCover(url) {
+  const r=await fetch(url);
+  if(!r.ok) throw new Error('表紙画像を取得できませんでした。');
+  const blob=await r.blob(),src=URL.createObjectURL(blob);
+  try { return await scaleImage(src); }
+  finally { URL.revokeObjectURL(src); }
+}
+async function applyWork(work) {
+  $('#title').value=work.title.slice(0,100);
+  $('#entryGenre').value=pickGenre(work.kind);
+  work.tags.forEach(tag=> { if(!state.formTags.includes(tag)) state.formTags.push(tag.slice(0,80)); });
+  dirty=true;
+  renderGenreChips();
+  renderFormTags();
+  closeWorkResults(`「${work.title}」の情報を入力しました。`);
+  // 自分で選んだ表紙は上書きしない
+  if(!work.cover||state.cover) return;
+  // 取得中に別の記録を開いたり、別の候補を選んだりしたら捨てる
+  const token=workSearchId;
+  try {
+    const cover=await fetchCover(work.cover);
+    if(token===workSearchId&&!state.cover) {
+      state.cover=cover;
+      preview(cover)
+    }
+  }
+  catch {
+    if(token===workSearchId) $('#work-status').textContent=`「${work.title}」の情報を入力しました（表紙画像は取得できませんでした）。`
+  }
+}
 function resetForm() {
+  closeWorkResults();
   $('#form').reset();
   $('#id').value='';
   state.cover=null;
@@ -576,6 +726,7 @@ $('#form').addEventListener('input',()=> { dirty=true; });
 $('#entryGenre').addEventListener('input',renderGenreChips);
 $('#rating').oninput=x=>$('#ratingValue').textContent=Number(x.target.value).toFixed(1);
 $('#add-tag').onclick=addFormTag;
+$('#work-search').onclick=runWorkSearch;
 $('#tag-input').addEventListener('keydown', event=> {
   if(event.key==='Enter') {
     event.preventDefault();

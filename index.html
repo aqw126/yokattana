@@ -12,11 +12,11 @@
     <meta property="og:type" content="website">
     <meta property="og:title" content="よかっ棚">
     <meta property="og:description" content="体験したものを自分の言葉で残す、個人用の記録アプリ。">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self'; img-src 'self' data: blob:; connect-src 'self' https://ndiwvgsgpmipypcipcpo.supabase.co; worker-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'self'">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self'; img-src 'self' data: blob: https://s4.anilist.co; connect-src 'self' https://ndiwvgsgpmipypcipcpo.supabase.co https://graphql.anilist.co https://s4.anilist.co https://ndlsearch.ndl.go.jp; worker-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'self'">
     <link rel="icon" href="icon.svg" type="image/svg+xml">
     <script src="theme.js"></script>
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="styles.css?v=202610252148">
+    <link rel="stylesheet" href="styles.css?v=202610252348">
   </head>
   <body>
     <a class="skip-link" href="#top">本文へ移動</a>
@@ -222,8 +222,15 @@
               <em>
                 必須
               </em>
-              <input id="title" required maxlength="100" placeholder="例：火車">
+              <span class="read-row">
+                <input id="title" required maxlength="100" placeholder="例：火車">
+                <button id="work-search" class="secondary" type="button">作品を検索</button>
+              </span>
             </label>
+            <div class="work-lookup">
+              <small id="work-status" class="work-status" role="status" aria-live="polite"></small>
+              <div id="work-results" class="work-results" role="group" aria-label="検索した作品の候補" hidden></div>
+            </div>
             <div class="pair">
               <div class="genre-field">
               <label>
@@ -490,8 +497,8 @@
       </article>
     </template>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js" integrity="sha384-TcHRA3zBbn+Lexh5n+Oil4guNPOS3rjNDpGRAN46u/s/mB2IZ50ceC6TYDU2yvgK" crossorigin="anonymous"></script>
-    <script src="supabase-config.js?v=202610252148"></script>
-    <script src="app.js?v=202610252148"></script>
+    <script src="supabase-config.js?v=202610252348"></script>
+    <script src="app.js?v=202610252348"></script>
   </body>
 </html>
 
