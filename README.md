@@ -15,6 +15,8 @@
 - `app.js`: 登録、検索、並べ替え、バックアップ、同期
 - `supabase-config.js` / `supabase-schema.sql`: Supabase の接続先とテーブル・RLS
 - `manifest.webmanifest` / `icon.svg`: ホーム画面への追加用
+- `tests/`: ブラウザで動く自動テスト。`python tests/run.py` で、ヘッドレス Chrome を使って実行します（`tests/index.html` を、ローカルサーバー経由で開いても確認できます）。アクセシビリティの確認も含みます
+- `.github/workflows/test.yml`: プッシュと PR のたびに、上のテストを自動で実行します
 - `tools/bump-version.py`: `styles.css` / `app.js` などを変更したら実行して、キャッシュ回避用の `?v=` を更新します
 - `.github/workflows/keepalive.yml`: Supabase 無料枠の自動停止を防ぐ、週1回のアクセス
 

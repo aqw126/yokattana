@@ -405,6 +405,8 @@ function render() {
     n.querySelector('footer small').textContent=x.readAt?date(x.readAt+'T00:00:00')+' に読んだ':date(x.createdAt)+' に追加';
     n.querySelector('.open').onclick=()=>openEditor(x);
     n.querySelector('.edit').onclick=()=>openEditor(x);
+    n.querySelector('.open').setAttribute('aria-label',`${x.title}を開く`);
+    n.querySelector('.edit').setAttribute('aria-label',`${x.title}を編集`);
     grid.append(n)
   })
 }

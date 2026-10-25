@@ -1,13 +1,13 @@
 :root {
   --ink:#23342c;
-  --muted:#6c776f;
+  --muted:#5f6a62;
   --line:#dce3dc;
   --paper:#fbfcf9;
   --canvas:#f2f5f0;
   --sage:#4d725d;
   --dark:#355744;
   --pale:#e5eee6;
-  --warm:#c7794c;
+  --warm:#9c5028;
   font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic UI",sans-serif;
   color:var(--ink);
   background:var(--canvas)
@@ -660,3 +660,17 @@ dialog footer {
 .account-label { max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .account-label[hidden] { display:none; }
 @media(max-width:720px) { .account-label { max-width:none; order:3; flex-basis:100%; } }
+
+/* アクセシビリティ */
+.skip-link { position:absolute; left:8px; top:-48px; z-index:20; padding:10px 14px; border-radius:8px; background:var(--dark); color:#fff; font-size:14px; }
+.skip-link:focus { top:8px; }
+:focus-visible { outline:3px solid var(--sage) !important; outline-offset:2px; }
+.edit, .tag-chip { min-height:32px; }
+.edit { min-width:44px; }
+@media (pointer:coarse) {
+  button, summary, .tag-chip, .multi-panel label { min-height:44px; }
+  .x { min-width:44px; }
+}
+@media (prefers-reduced-motion:reduce) {
+  *, *::before, *::after { transition:none !important; animation:none !important; scroll-behavior:auto !important; }
+}
