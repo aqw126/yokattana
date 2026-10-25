@@ -237,3 +237,45 @@ test('オフライン: 保存済みの一覧は、通信なしでも読み込め
   const reloaded = load();
   eq(reloaded.map(x => x.title), ['オフラインでも']);
 });
+
+// ---- コピーの反応 ----
+test('コピー: ボタンの文字が変わり、ダイアログの手前にお知らせが出る', async () => {
+  resetApp();
+  const written = [];
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async text => { written.push(text); } } });
+  try {
+    $('#share-dialog').showModal();
+    $('#share-url').value = 'https://example.com/share.html#abc';
+    const button = $('#share-copy');
+    const label = button.textContent;
+    await copyText($('#share-url').value, button);
+    eq(written, ['https://example.com/share.html#abc']);
+    assert(button.textContent.includes('コピーしました') && button.classList.contains('done'), 'button feedback');
+    assert($('#share-dialog').contains($('#toast')) && !$('#toast').hidden, 'toast must be inside the open dialog to be visible');
+    clearTimeout(button.flashTimer);
+    button.textContent = label;
+    button.classList.remove('done');
+  }
+  finally {
+    delete navigator.clipboard;
+    $('#share-dialog').close();
+    document.body.append($('#toast'));
+  }
+});
+
+test('コピー: クリップボードが使えなくても、別の方法でコピーする', async () => {
+  resetApp();
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async () => { throw new Error('denied'); } } });
+  const execOriginal = document.execCommand;
+  let copied = false;
+  document.execCommand = command => { copied = command === 'copy'; return true; };
+  try {
+    const button = document.createElement('button');
+    button.textContent = 'コピー';
+    await copyText('リンク', button);
+    assert(copied, 'fallback copy used');
+    assert(button.textContent.includes('コピーしました'), 'feedback');
+    clearTimeout(button.flashTimer);
+  }
+  finally { delete navigator.clipboard; document.execCommand = execOriginal; }
+});

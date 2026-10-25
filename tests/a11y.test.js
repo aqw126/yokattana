@@ -75,7 +75,7 @@ test('a11y: 文字色と背景の対比が基準（4.5:1）を満たす（ライ
   try {
     ['light', 'dark'].forEach(theme => {
       root.setAttribute('data-theme', theme);
-      const backgrounds = ['--canvas', '--paper', '--pale', '--surface'].map(cssVar);
+      const backgrounds = ['--canvas', '--paper', '--pale', '--surface', '--field'].map(cssVar);
       ['--ink', '--muted', '--warm', '--dark', '--danger'].forEach(name => {
         backgrounds.forEach(bg => { const ratio = contrast(cssVar(name), bg); if (ratio < 4.5) bad.push(`${theme} ${name} on ${bg} = ${ratio.toFixed(2)}`); });
       });

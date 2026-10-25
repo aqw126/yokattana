@@ -27,10 +27,12 @@ function savePending() {
 let toastTimer;
 function showToast(message) {
   const toast=$('#toast');
+  // 開いているダイアログの手前に出すため、いちばん上のダイアログの中に置く
+  (document.querySelectorAll('dialog[open]').item(document.querySelectorAll('dialog[open]').length-1)||document.body).append(toast);
   toast.textContent=message;
   toast.hidden=false;
   clearTimeout(toastTimer);
-  toastTimer=setTimeout(()=> { toast.hidden=true; },5000)
+  toastTimer=setTimeout(()=> { toast.hidden=true; document.body.append(toast); },5000)
 }
 function updateSyncStatus(failed=false) {
   const status=$('#sync-status');
@@ -1055,9 +1057,40 @@ function criteriaText() {
 function shareUrl(id) {
   return new URL(`share.html#${id}`,location.href).href
 }
-async function copyText(text) {
-  try { await navigator.clipboard.writeText(text); showToast('コピーしました。'); }
-  catch { prompt('このリンクをコピーしてください',text); }
+function legacyCopy(text) {
+  const area=document.createElement('textarea');
+  area.value=text;
+  area.setAttribute('readonly','');
+  area.style.position='fixed';
+  area.style.opacity='0';
+  document.body.append(area);
+  area.select();
+  let ok=false;
+  try { ok=document.execCommand('copy'); }
+  catch {}
+  area.remove();
+  return ok
+}
+// ボタンの文字を、少しの間だけ変えて、押せたことを伝える
+function flashButton(button,label='コピーしました ✓') {
+  if(!button) return;
+  const original=button.dataset.label||button.textContent;
+  button.dataset.label=original;
+  button.textContent=label;
+  button.classList.add('done');
+  clearTimeout(button.flashTimer);
+  button.flashTimer=setTimeout(()=> {
+    button.textContent=original;
+    button.classList.remove('done')
+  },2000)
+}
+async function copyText(text,button) {
+  let ok=true;
+  try { await navigator.clipboard.writeText(text); }
+  catch { ok=legacyCopy(text); }
+  if(!ok) { prompt('このリンクをコピーしてください',text); return; }
+  flashButton(button);
+  showToast('リンクをコピーしました。')
 }
 function openShare(items,title,criteria) {
   shareDraft= { items,criteria };
@@ -1116,7 +1149,7 @@ async function loadMyShares() {
       copy.type='button';
       copy.className='link';
       copy.textContent='コピー';
-      copy.onclick=()=>copyText(shareUrl(row.id));
+      copy.onclick=()=>copyText(shareUrl(row.id),copy);
       stop.type='button';
       stop.className='link danger';
       stop.textContent='停止';
@@ -1144,7 +1177,7 @@ $('#share-one').onclick=()=> {
   openShare([item],item.title,`「${item.title}」1件`)
 };
 $('#share-create').onclick=createShare;
-$('#share-copy').onclick=()=>copyText($('#share-url').value);
+$('#share-copy').onclick=()=>copyText($('#share-url').value,$('#share-copy'));
 $('#share-native').onclick=()=> { navigator.share?.({ title:$('#share-title').value||'よかっ棚',url:$('#share-url').value }).catch(()=> {}); };
 $('#close-share').onclick=()=>$('#share-dialog').close();
 
