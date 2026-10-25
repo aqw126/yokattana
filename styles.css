@@ -626,3 +626,27 @@ dialog footer {
 .multi-search { display:block; width:calc(100% - 12px); margin:6px; padding:8px 10px; border:1px solid var(--line); border-radius:7px; outline:0; font-size:13px; }
 .multi-search:focus { border-color:var(--sage); }
 .multi-panel label[hidden] { display:none; }
+
+.heading-actions { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:2px 6px; }
+.read-field .optional { color:var(--muted); }
+.read-row { display:flex; gap:8px; align-items:center; }
+.read-row input { flex:1; min-width:0; }
+.manage-note { color:var(--muted); font-size:13px; line-height:1.7; margin:0 0 16px; }
+.manage-title { font-size:15px; margin:24px 0 8px; }
+.manage-list { list-style:none; margin:0; padding:0; display:grid; }
+.manage-list li { display:flex; align-items:center; gap:6px; padding:6px 0; border-bottom:1px solid var(--line); }
+.manage-name { flex:1; min-width:0; overflow-wrap:anywhere; font-size:14px; }
+.manage-empty { color:var(--muted); font-size:13px; padding:8px 0; }
+.review-year { display:inline-grid; gap:6px; font-size:12px; font-weight:650; margin-bottom:8px; }
+.review-year select { padding:8px 10px; border:1px solid var(--line); border-radius:8px; background:white; font-size:14px; }
+.review-summary { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:8px; }
+.review-summary div { display:grid; gap:4px; padding:14px 8px; text-align:center; border:1px solid var(--line); border-radius:10px; background:var(--paper); }
+.review-summary strong { font-size:24px; color:var(--dark); }
+.review-summary span { font-size:12px; color:var(--muted); }
+.bars { display:grid; gap:6px; }
+.bar-row { display:grid; grid-template-columns:minmax(48px,110px) 1fr 32px; align-items:center; gap:8px; font-size:13px; }
+.bar-label { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.bar-track { height:10px; border-radius:5px; background:var(--pale); overflow:hidden; }
+.bar-fill { height:100%; border-radius:5px; background:var(--sage); }
+.bar-count { text-align:right; color:var(--muted); }
+#manage-dialog, #review-dialog { width:min(560px,calc(100vw - 28px)); max-height:calc(100vh - 40px); }
