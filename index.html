@@ -15,7 +15,7 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self'; img-src 'self' data: blob:; connect-src 'self' https://ndiwvgsgpmipypcipcpo.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'self'">
     <link rel="icon" href="icon.svg" type="image/svg+xml">
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="styles.css?v=202610251849">
+    <link rel="stylesheet" href="styles.css?v=202610251938">
   </head>
   <body>
     <header>
@@ -203,15 +203,16 @@
               <input id="title" required maxlength="100" placeholder="例：火車">
             </label>
             <div class="pair">
+              <div class="genre-field">
               <label>
                 ジャンル
                 <em>
                   必須
                 </em>
-                <input id="entryGenre" required list="genreList" maxlength="40" placeholder="例：小説">
-                <datalist id="genreList">
-                </datalist>
+                <input id="entryGenre" required maxlength="40" autocomplete="off" placeholder="例：小説">
               </label>
+              <div id="genre-chips" class="tag-chips genre-chips" role="group" aria-label="これまでのジャンルから選ぶ"></div>
+            </div>
               <label>
                 評価
                 <strong id="ratingValue">
@@ -306,8 +307,8 @@
       </article>
     </template>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js" integrity="sha384-TcHRA3zBbn+Lexh5n+Oil4guNPOS3rjNDpGRAN46u/s/mB2IZ50ceC6TYDU2yvgK" crossorigin="anonymous"></script>
-    <script src="supabase-config.js?v=202610251849"></script>
-    <script src="app.js?v=202610251849"></script>
+    <script src="supabase-config.js?v=202610251938"></script>
+    <script src="app.js?v=202610251938"></script>
   </body>
 </html>
 

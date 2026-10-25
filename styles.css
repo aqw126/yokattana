@@ -605,3 +605,8 @@ dialog footer {
 .policy .muted { color:var(--muted); }
 .toast { position:fixed; left:50%; bottom:24px; transform:translateX(-50%); max-width:min(480px,calc(100vw - 32px)); padding:12px 18px; border-radius:10px; background:var(--dark); color:#fff; font-size:13px; line-height:1.6; box-shadow:0 8px 24px #23342c33; z-index:10; }
 .toast[hidden] { display:none; }
+.genre-chips { margin-top:-4px; }
+.genre-chips[hidden] { display:none; }
+.tag-chip[aria-pressed="true"] { background:var(--sage); color:#fff; }
+.genre-field { display:grid; gap:10px; align-content:start; }
+.genre-chips { margin-top:0; }

@@ -301,7 +301,7 @@ function visible() {
 function render() {
   choices($('#genre'),genres());
   choices($('#tag'),alltags());
-  $('#genreList').innerHTML=genres().map(x=>`<option value="${e(x)}">`).join('');
+  renderGenreChips();
   const live=liveItems();
   $('#count').textContent=live.length;
   $('#genres').textContent=genres().length;
@@ -345,6 +345,24 @@ function preview(v) {
     box.append(img)
   }
   $('#removeCover').hidden=!v
+}
+function renderGenreChips() {
+  const box=$('#genre-chips'),current=$('#entryGenre').value.trim();
+  box.innerHTML='';
+  genres().forEach(name=> {
+    const chip=document.createElement('button');
+    chip.type='button';
+    chip.className='tag-chip';
+    chip.textContent=name;
+    chip.setAttribute('aria-pressed',String(name===current));
+    chip.onclick=()=> {
+      $('#entryGenre').value=name;
+      dirty=true;
+      renderGenreChips()
+    };
+    box.append(chip)
+  });
+  box.hidden=!box.children.length
 }
 function renderFormTags() {
   const container=$('#tag-chips');
@@ -399,6 +417,7 @@ function openEditor(x) {
     state.cover=x.cover||null;
     preview(state.cover)
   }
+  renderGenreChips();
   $('#dialog').showModal();
   $('#title').focus()
 }
@@ -436,6 +455,7 @@ $('#cancel').onclick=()=>closeEditor();
 // Esc で閉じるときも、未保存の変更を確認する
 $('#dialog').addEventListener('cancel',event=> { if(dirty&&!confirm(DISCARD_MESSAGE)) event.preventDefault(); });
 $('#form').addEventListener('input',()=> { dirty=true; });
+$('#entryGenre').addEventListener('input',renderGenreChips);
 $('#rating').oninput=x=>$('#ratingValue').textContent=Number(x.target.value).toFixed(1);
 $('#add-tag').onclick=addFormTag;
 $('#tag-input').addEventListener('keydown', event=> {
