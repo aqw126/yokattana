@@ -6,16 +6,17 @@
     <title>
       よかっ棚
     </title>
-    <meta name="description" content="読んだもの、観たものを自分の言葉で残す、個人用の記録アプリ。">
+    <meta name="description" content="体験したものを自分の言葉で残す、個人用の記録アプリ。">
     <meta name="google-site-verification" content="sSJltWLyytTXX9rsAS-dDUWA62FrINmIP1d6yBlfI1c">
     <meta name="theme-color" content="#4d725d">
     <meta property="og:type" content="website">
     <meta property="og:title" content="よかっ棚">
-    <meta property="og:description" content="読んだもの、観たものを自分の言葉で残す、個人用の記録アプリ。">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self'; img-src 'self' data: blob:; connect-src 'self' https://ndiwvgsgpmipypcipcpo.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'self'">
+    <meta property="og:description" content="体験したものを自分の言葉で残す、個人用の記録アプリ。">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self'; img-src 'self' data: blob:; connect-src 'self' https://ndiwvgsgpmipypcipcpo.supabase.co; worker-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'self'">
     <link rel="icon" href="icon.svg" type="image/svg+xml">
+    <script src="theme.js"></script>
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="styles.css?v=202610252113">
+    <link rel="stylesheet" href="styles.css?v=202610252148">
   </head>
   <body>
     <a class="skip-link" href="#top">本文へ移動</a>
@@ -26,7 +27,7 @@
         </b>
         よかっ棚
       </a>
-      <nav><span id="sync-status" class="sync-status">この端末に保存中</span><span id="account-label" class="sync-status account-label" hidden></span><button class="secondary" id="auth-button" type="button">ログイン</button>
+      <nav><span id="sync-status" class="sync-status">この端末に保存中</span><span id="account-label" class="sync-status account-label" hidden></span><button class="secondary" id="theme-toggle" type="button">◐ 自動</button><button class="secondary" id="auth-button" type="button">ログイン</button>
         <button class="secondary" id="import">
           データを読み込む
         </button>
@@ -43,7 +44,7 @@
             PERSONAL LIBRARY
           </p>
           <h1>
-            読んだもの、観たものを
+            体験したものを
             <br>
             自分の言葉で残す。
           </h1>
@@ -143,6 +144,12 @@
           </button>
           <button class="link" id="open-manage" type="button">
             ジャンル・タグの整理
+          </button>
+          <button class="link" id="open-share" type="button">
+            共有
+          </button>
+          <button class="link" id="start-pick" type="button">
+            選んで共有
           </button>
           <button class="link" id="open-trash" type="button">
             ごみ箱
@@ -268,11 +275,25 @@
               <textarea id="notes" rows="6" maxlength="2000" placeholder="心に残った場面、あとで読み返したいことなど。">
               </textarea>
             </label>
+            <label>
+              引用・心に残った一文
+              <em class="optional">
+                任意
+              </em>
+              <textarea id="quote" rows="3" maxlength="1000" placeholder="作品の中の、心に残った言葉など。"></textarea>
+            </label>
+            <label class="check">
+              <input id="spoiler" type="checkbox">
+              メモ・引用にネタバレを含む
+            </label>
           </div>
         </section>
         <footer>
           <button class="link danger" id="delete" type="button" hidden>
             この記録を削除
+          </button>
+          <button class="link" id="share-one" type="button" hidden>
+            この記録を共有
           </button>
           <div>
             <button class="secondary" id="cancel" type="button">
@@ -297,6 +318,50 @@
         <p class="auth-copy">Googleアカウントでログインすると、どの端末でも同じ記録を使えます。</p>
         <p id="auth-message" class="auth-message" aria-live="polite"></p>
         <footer><button type="button" id="google-button">Googleでログイン</button></footer>
+      </form>
+    </dialog>
+    <dialog id="share-dialog" aria-labelledby="share-heading">
+      <form method="dialog">
+        <section class="modalhead">
+          <div>
+            <p class="eyebrow">SHARE</p>
+            <h2 id="share-heading">共有リンクを作る</h2>
+          </div>
+          <button class="x" id="close-share" type="button" aria-label="閉じる">×</button>
+        </section>
+        <p class="manage-note" id="share-login" hidden>共有リンクの作成には、ログインが必要です。</p>
+        <p class="manage-note" id="share-summary"></p>
+        <label class="share-field">タイトル
+          <input id="share-title" maxlength="100" autocomplete="off">
+        </label>
+        <fieldset class="share-field">
+          <legend>メモ・引用</legend>
+          <label class="check"><input type="radio" name="share-mode" value="none" checked> 含めない（おすすめ）</label>
+          <label class="check"><input type="radio" name="share-mode" value="safe"> ネタバレなしの記録のものだけ含める</label>
+          <label class="check"><input type="radio" name="share-mode" value="all"> すべて含める（ネタバレありの記録は、見る側で隠して表示）</label>
+        </fieldset>
+        <label class="share-field">有効期限
+          <select id="share-expiry">
+            <option value="7">7日間</option>
+            <option value="30" selected>30日間</option>
+            <option value="0">期限なし</option>
+          </select>
+        </label>
+        <p class="manage-note">リンクを知っている人は、だれでも見られます。表紙画像は含まれません。作成後に記録を変えても、共有した内容は変わりません（その時点のコピーです）。</p>
+        <div class="data-actions">
+          <button type="button" id="share-create">共有リンクを作る</button>
+        </div>
+        <div id="share-result" hidden>
+          <label class="share-field">共有リンク
+            <input id="share-url" readonly>
+          </label>
+          <div class="data-actions">
+            <button type="button" class="secondary" id="share-copy">コピー</button>
+            <button type="button" class="secondary" id="share-native" hidden>共有…</button>
+          </div>
+        </div>
+        <h3 class="manage-title">作成済みのリンク</h3>
+        <ul id="share-list" class="manage-list"></ul>
       </form>
     </dialog>
     <dialog id="trash-dialog" aria-labelledby="trash-title">
@@ -382,8 +447,16 @@
         <ul id="review-top" class="manage-list"></ul>
       </form>
     </dialog>
+    <div id="pick-bar" class="pick-bar" role="region" aria-label="共有する記録を選ぶ" hidden>
+      <span id="pick-count" class="pick-count" aria-live="polite"></span>
+      <button class="link" id="pick-all" type="button">絞り込み結果をすべて選ぶ</button>
+      <button class="link" id="pick-clear" type="button">選択を解除</button>
+      <button id="pick-share" type="button">共有リンクを作る</button>
+      <button class="secondary" id="pick-cancel" type="button">やめる</button>
+    </div>
     <template id="card">
       <article>
+        <label class="pick" hidden><input type="checkbox" class="pick-box"></label>
         <button class="open">
           <div class="art">
             <img hidden>
@@ -396,6 +469,7 @@
               </b>
               <strong>
               </strong>
+              <i class="spoiler-badge" hidden>ネタバレ</i>
             </div>
             <h3>
             </h3>
@@ -403,6 +477,7 @@
             </div>
             <p>
             </p>
+            <blockquote hidden></blockquote>
           </div>
         </button>
         <footer>
@@ -415,8 +490,8 @@
       </article>
     </template>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js" integrity="sha384-TcHRA3zBbn+Lexh5n+Oil4guNPOS3rjNDpGRAN46u/s/mB2IZ50ceC6TYDU2yvgK" crossorigin="anonymous"></script>
-    <script src="supabase-config.js?v=202610252113"></script>
-    <script src="app.js?v=202610252113"></script>
+    <script src="supabase-config.js?v=202610252148"></script>
+    <script src="app.js?v=202610252148"></script>
   </body>
 </html>
 

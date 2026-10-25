@@ -69,14 +69,26 @@ test('a11y: 見出しの階層が飛んでいない', () => {
   levels.forEach((level, i) => assert(i === 0 || level - levels[i - 1] <= 1, `heading jump at ${i}`));
 });
 
-test('a11y: 文字色と背景の対比が基準（4.5:1）を満たす', () => {
-  const backgrounds = ['--canvas', '--paper', '--pale'].map(cssVar).concat('#ffffff');
+test('a11y: 文字色と背景の対比が基準（4.5:1）を満たす（ライト・ダーク）', () => {
+  const root = document.documentElement, saved = root.getAttribute('data-theme');
   const bad = [];
-  ['--ink', '--muted', '--warm', '--dark'].forEach(name => {
-    backgrounds.forEach(bg => { const ratio = contrast(cssVar(name), bg); if (ratio < 4.5) bad.push(`${name} on ${bg} = ${ratio.toFixed(2)}`); });
-  });
-  const onSage = contrast('#ffffff', cssVar('--sage'));
-  if (onSage < 4.5) bad.push(`white on --sage = ${onSage.toFixed(2)}`);
+  try {
+    ['light', 'dark'].forEach(theme => {
+      root.setAttribute('data-theme', theme);
+      const backgrounds = ['--canvas', '--paper', '--pale', '--surface', '--field'].map(cssVar);
+      ['--ink', '--muted', '--warm', '--dark', '--danger'].forEach(name => {
+        backgrounds.forEach(bg => { const ratio = contrast(cssVar(name), bg); if (ratio < 4.5) bad.push(`${theme} ${name} on ${bg} = ${ratio.toFixed(2)}`); });
+      });
+      [['--on-sage', '--sage'], ['--on-dark', '--dark'], ['--sage', '--surface'], ['--sage', '--canvas']].forEach(([fg, bg]) => {
+        const ratio = contrast(cssVar(fg), cssVar(bg));
+        if (ratio < 4.5) bad.push(`${theme} ${fg} on ${bg} = ${ratio.toFixed(2)}`);
+      });
+    });
+  }
+  finally {
+    if (saved === null) root.removeAttribute('data-theme');
+    else root.setAttribute('data-theme', saved);
+  }
   eq(bad, []);
 });
 
@@ -111,4 +123,24 @@ test('a11y: 選択状態をボタンの属性でも伝える', () => {
   $('#entryGenre').value = '本';
   renderGenreChips();
   eq($('#genre-chips button').getAttribute('aria-pressed'), 'true');
+});
+
+test('テーマ: 自動→ライト→ダークと切り替わり、保存される', () => {
+  const root = document.documentElement, saved = root.getAttribute('data-theme');
+  try {
+    applyTheme('auto');
+    $('#theme-toggle').click();
+    eq(root.getAttribute('data-theme'), 'light');
+    $('#theme-toggle').click();
+    eq(root.getAttribute('data-theme'), 'dark');
+    eq(localStorage.getItem('yokattana-theme'), 'dark');
+    $('#theme-toggle').click();
+    eq(root.getAttribute('data-theme'), null);
+    assert($('#theme-toggle').getAttribute('aria-label').includes('自動'), 'label follows theme');
+  }
+  finally {
+    if (saved === null) root.removeAttribute('data-theme');
+    else root.setAttribute('data-theme', saved);
+    applyTheme(currentTheme());
+  }
 });

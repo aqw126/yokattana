@@ -1,7 +1,7 @@
 {
   "name": "よかっ棚",
   "short_name": "よかっ棚",
-  "description": "読んだもの、観たものを自分の言葉で残す、個人用の記録アプリ。",
+  "description": "体験したものを自分の言葉で残す、個人用の記録アプリ。",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

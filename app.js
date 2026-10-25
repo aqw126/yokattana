@@ -3,7 +3,7 @@ const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const COVER=/^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+$/;
 const TRASH_DAYS=30,CARD_PAGE=24,TOMBSTONE_DAYS=90,SYNC_CHUNK=20,PAGE_SIZE=100,COVER_LIMIT=150000;
 const cloud=window.supabase?.createClient(window.SUPABASE_CONFIG?.url,window.SUPABASE_CONFIG?.publishableKey);
-let shownLimit=CARD_PAGE,lastView='',currentUser=null,flushing=false,shrinking=false,dirty=false;
+let shownLimit=CARD_PAGE,lastView='',picking=false,currentUser=null,flushing=false,shrinking=false,dirty=false;
 
 // 旧名称で保存されたデータを引き継ぐ
 try {
@@ -27,18 +27,21 @@ function savePending() {
 let toastTimer;
 function showToast(message) {
   const toast=$('#toast');
+  // 開いているダイアログの手前に出すため、いちばん上のダイアログの中に置く
+  (document.querySelectorAll('dialog[open]').item(document.querySelectorAll('dialog[open]').length-1)||document.body).append(toast);
   toast.textContent=message;
   toast.hidden=false;
   clearTimeout(toastTimer);
-  toastTimer=setTimeout(()=> { toast.hidden=true; },5000)
+  toastTimer=setTimeout(()=> { toast.hidden=true; document.body.append(toast); },5000)
 }
 function updateSyncStatus(failed=false) {
   const status=$('#sync-status');
   let message='この端末に保存中',connected=false;
-  if(!cloud) message='同期設定が見つかりません';
+  if(!navigator.onLine) message=currentUser?`オフライン（接続すると同期します）`:'オフライン（この端末に保存中）';
+  else if(!cloud) message='同期設定が見つかりません';
   else if(!currentUser) message='ログインすると自動同期';
   else if(failed||pending.size) message=pending.size?`同期待ち ${pending.size}件`:'同期に失敗しました';
-  else { message='自動同期中'; connected=true; }
+  else if(navigator.onLine) { message='自動同期中'; connected=true; }
   status.textContent=message;
   status.classList.toggle('connected',connected);
   const label=$('#account-label'),account=currentUser?.email||currentUser?.user_metadata?.email||currentUser?.user_metadata?.name||'';
@@ -194,10 +197,10 @@ function validDate(v,fallback) {
   return typeof v==='string'&&!isNaN(t)?t.toISOString():fallback
 }
 function hasContent(x) {
-  return!!(x.title||x.notes||x.cover||x.tags.length)
+  return!!(x.title||x.notes||x.quote||x.cover||x.tags.length)
 }
 function emptyOf(x,now) {
-  return { ...x,title:'',notes:'',cover:null,tags:[],readAt:null,deleted:true,updatedAt:now }
+  return { ...x,title:'',notes:'',quote:'',spoiler:false,cover:null,tags:[],readAt:null,deleted:true,updatedAt:now }
 }
 // ごみ箱に入れて30日たった記録は、中身を消して、削除したことだけを残す
 function compactTrash(list) {
@@ -228,6 +231,8 @@ function normalizeItem(raw) {
     rating:Math.min(5,Math.max(3,Number(raw.rating)||3)),
     tags:Array.isArray(raw.tags)?[...new Set(raw.tags.map(t=>String(t).trim()).filter(Boolean))]:[],
     notes:String(raw.notes??'').trim(),
+    quote:String(raw.quote??'').trim().slice(0,1000),
+    spoiler:raw.spoiler===true,
     cover:typeof raw.cover==='string'&&COVER.test(raw.cover)?raw.cover:null,
     readAt:validDay(raw.readAt),createdAt,updatedAt:validDate(raw.updatedAt,createdAt),deleted
   }
@@ -309,7 +314,7 @@ function genres() {
 function alltags() {
   return[...new Set(liveItems().flatMap(x=>x.tags))].sort((a,b)=>a.localeCompare(b,'ja'))
 }
-const filters= { genre:new Set(),tag:new Set() },filterKeys= {};
+const filters= { genre:new Set(),tag:new Set() },filterKeys= {},selection=new Set();
 // 選択肢が多いときのために、入力した文字で一覧を絞る
 function applyOptionSearch(root) {
   const q=root.querySelector('.multi-search').value.trim().toLocaleLowerCase('ja');
@@ -346,7 +351,7 @@ function date(v) {
 }
 function visible() {
   let q=$('#query').value.trim().toLocaleLowerCase('ja'),g=filters.genre,t=filters.tag,s=$('#sort').value,r=liveItems().filter(x=> {
-    let text=[x.title,x.genre,...x.tags,x.notes||''].join(' ').toLocaleLowerCase('ja');
+    let text=[x.title,x.genre,...x.tags,x.notes||'',x.quote||''].join(' ').toLocaleLowerCase('ja');
     return(!q||text.includes(q))&&(!g.size||g.has(x.genre))&&[...t].every(tag=>x.tags.includes(tag))
   });
   return r.sort((a,b)=>compareItems(s,a,b))
@@ -384,6 +389,8 @@ function render() {
   $('#notfound').hidden=live.length===0||list.length>0;
   $('#heading').textContent=$('#query').value||filters.genre.size||filters.tag.size?`検索結果 (${list.length})`:`すべての記録 (${live.length})`;
   let tpl=$('#card');
+  grid.classList.toggle('picking',picking);
+  [...selection].filter(id=>!live.some(x=>x.id===id)).forEach(id=>selection.delete(id));
   list.slice(0,shownLimit).forEach(x=> {
     let n=tpl.content.cloneNode(true),img=n.querySelector('img'),letter=n.querySelector('.art span');
     if(x.cover) {
@@ -402,13 +409,26 @@ function render() {
     let p=n.querySelector('.cardbody p');
     p.textContent=x.notes||'';
     p.hidden=!x.notes;
+    const quote=n.querySelector('blockquote');
+    quote.textContent=x.quote||'';
+    quote.hidden=!x.quote;
+    n.querySelector('.spoiler-badge').hidden=!x.spoiler;
     n.querySelector('footer small').textContent=x.readAt?date(x.readAt+'T00:00:00')+' に読んだ':date(x.createdAt)+' に追加';
-    n.querySelector('.open').onclick=()=>openEditor(x);
-    n.querySelector('.edit').onclick=()=>openEditor(x);
+    const card=n.querySelector('article'),pick=n.querySelector('.pick'),box=n.querySelector('.pick-box');
+    pick.hidden=!picking;
+    box.checked=selection.has(x.id);
+    box.setAttribute('aria-label',`${x.title}を共有に含める`);
+    card.classList.toggle('picked',box.checked);
+    box.onchange=()=> { setPicked(x.id,box.checked); card.classList.toggle('picked',box.checked); };
+    // 選ぶモードでは、カードを押すと編集ではなく、選択の切り替えになる
+    const activate=()=> { if(picking) { box.checked=!box.checked; box.onchange(); } else openEditor(x); };
+    n.querySelector('.open').onclick=activate;
+    n.querySelector('.edit').onclick=activate;
     n.querySelector('.open').setAttribute('aria-label',`${x.title}を開く`);
     n.querySelector('.edit').setAttribute('aria-label',`${x.title}を編集`);
     grid.append(n)
-  })
+  });
+  updatePickBar()
 }
 function preview(v) {
   const box=$('#preview');
@@ -482,6 +502,7 @@ function openEditor(x) {
   $('#kicker').textContent=x?'EDIT ENTRY':'NEW ENTRY';
   $('#modalTitle').textContent=x?'記録を編集':'記録を追加';
   $('#delete').hidden=!x;
+  $('#share-one').hidden=!x;
   if(x) {
     $('#id').value=x.id;
     $('#title').value=x.title;
@@ -491,6 +512,8 @@ function openEditor(x) {
     state.formTags=[...(x.tags||[])];
     renderFormTags();
     $('#notes').value=x.notes||'';
+    $('#quote').value=x.quote||'';
+    $('#spoiler').checked=!!x.spoiler;
     $('#readAt').value=x.readAt||'';
     state.cover=x.cover||null;
     preview(state.cover)
@@ -523,6 +546,23 @@ function backup(prefix='yokattana') {
   a.click();
   URL.revokeObjectURL(u)
 }
+// 表示テーマ（自動 → ライト → ダーク）
+const THEMES=['auto','light','dark'],THEME_NAMES= { auto:'自動',light:'ライト',dark:'ダーク' };
+function currentTheme() {
+  const value=document.documentElement.getAttribute('data-theme');
+  return THEMES.includes(value)?value:'auto'
+}
+function applyTheme(theme) {
+  if(theme==='auto') document.documentElement.removeAttribute('data-theme');
+  else document.documentElement.setAttribute('data-theme',theme);
+  try { localStorage.setItem('yokattana-theme',theme); }
+  catch {}
+  const button=$('#theme-toggle');
+  button.textContent=`◐ ${THEME_NAMES[theme]}`;
+  button.setAttribute('aria-label',`表示テーマ：${THEME_NAMES[theme]}（押すと切り替え）`)
+}
+$('#theme-toggle').onclick=()=>applyTheme(THEMES[(THEMES.indexOf(currentTheme())+1)%THEMES.length]);
+applyTheme(currentTheme());
 $('#auth-button').onclick=toggleAuthentication;
 $('#google-button').onclick=signInWithGoogle;
 $('#close-auth').onclick=()=>$('#auth-dialog').close();
@@ -565,7 +605,7 @@ $('#form').onsubmit=x=> {
   x.preventDefault();
   addFormTag();
   let id=$('#id').value,old=state.items.find(x=>x.id===id),entry= {
-    id:id||crypto.randomUUID(),title:$('#title').value.trim(),genre:$('#entryGenre').value.trim(),rating:Number($('#rating').value),readAt:validDay($('#readAt').value),tags:[...state.formTags],notes:$('#notes').value.trim(),cover:state.cover,createdAt:old?.createdAt||new Date().toISOString(),updatedAt:new Date().toISOString(),deleted:false
+    id:id||crypto.randomUUID(),title:$('#title').value.trim(),genre:$('#entryGenre').value.trim(),rating:Number($('#rating').value),readAt:validDay($('#readAt').value),tags:[...state.formTags],notes:$('#notes').value.trim(),quote:$('#quote').value.trim(),spoiler:$('#spoiler').checked,cover:state.cover,createdAt:old?.createdAt||new Date().toISOString(),updatedAt:new Date().toISOString(),deleted:false
   };
   if(!commit(old?state.items.map(x=>x.id===id?entry:x):[...state.items,entry])) return;
   markPending([entry]);
@@ -633,8 +673,8 @@ function csvCell(value) {
   return/[",\r\n]/.test(text)?`"${text.replace(/"/g,'""')}"`:text
 }
 function exportCsv() {
-  const header=['タイトル','ジャンル','評価','読んだ日','タグ','メモ','追加日'];
-  const rows=liveItems().sort((a,b)=>new Date(a.createdAt)-new Date(b.createdAt)).map(x=>[x.title,x.genre,x.rating.toFixed(1),x.readAt||'',x.tags.join(';'),x.notes,localDay(new Date(x.createdAt))]);
+  const header=['タイトル','ジャンル','評価','読んだ日','タグ','メモ','引用','ネタバレ','追加日'];
+  const rows=liveItems().sort((a,b)=>new Date(a.createdAt)-new Date(b.createdAt)).map(x=>[x.title,x.genre,x.rating.toFixed(1),x.readAt||'',x.tags.join(';'),x.notes,x.quote,x.spoiler?'あり':'',localDay(new Date(x.createdAt))]);
   const text='\ufeff'+[header,...rows].map(row=>row.map(csvCell).join(',')).join('\r\n')+'\r\n';
   const url=URL.createObjectURL(new Blob([text], { type:'text/csv;charset=utf-8' })),a=document.createElement('a');
   a.href=url;
@@ -676,6 +716,8 @@ const CSV_FIELDS= {
   readAt:['読んだ日','読了日','鑑賞日','視聴日','日付','readat','date'],
   tags:['タグ','tags','tag'],
   notes:['メモ','感想','レビュー','読書メモ(ネタバレ)','読書メモ','コメント','notes','review','comment'],
+  quote:['引用','名言','quote'],
+  spoiler:['ネタバレ','spoiler'],
   createdAt:['追加日','登録日時','登録日','createdat']
 };
 function csvDay(value) {
@@ -695,7 +737,7 @@ function csvItems(text) {
     const added=csvDay(cells('createdAt')[0]);
     return normalizeItem( {
       id:crypto.randomUUID(),title:cells('title')[0],genre:cells('genre')[0],rating,
-      tags:cells('tags').join(';').split(/[;；,，、]+/),notes:cells('notes').join('\n\n'),
+      tags:cells('tags').join(';').split(/[;；,，、]+/),notes:cells('notes').join('\n\n'),quote:cells('quote')[0],spoiler:/^(1|true|yes|あり|有|○|はい)$/i.test(cells('spoiler')[0]||''),
       readAt:csvDay(cells('readAt')[0]),createdAt:added?new Date(added+'T00:00:00').toISOString():now,updatedAt:now
     })
   }).filter(Boolean)
@@ -998,13 +1040,207 @@ $('#open-review').onclick=openReview;
 $('#review-year').onchange=drawReview;
 $('#close-review').onclick=()=>$('#review-dialog').close();
 
+// 共有する記録を、手動で選ぶ
+function setPicked(id,on) {
+  if(on) selection.add(id);
+  else selection.delete(id);
+  updatePickBar()
+}
+function pickedItems() {
+  // 画面の並び順を保ち、絞り込みで見えていない選択済みの記録は、最後に足す
+  const shown=visible().filter(x=>selection.has(x.id)),ids=new Set(shown.map(x=>x.id));
+  return[...shown,...liveItems().filter(x=>selection.has(x.id)&&!ids.has(x.id)).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt))]
+}
+function updatePickBar() {
+  const bar=$('#pick-bar');
+  bar.hidden=!picking;
+  if(!picking) return;
+  const count=selection.size;
+  $('#pick-count').textContent=count>SHARE_LIMIT?`${count}件を選択中（共有できるのは${SHARE_LIMIT}件までです）`:`${count}件を選択中`;
+  $('#pick-share').disabled=!count||count>SHARE_LIMIT;
+  $('#pick-clear').disabled=!count;
+  $('#pick-all').textContent=`絞り込み結果をすべて選ぶ（${visible().length}件）`
+}
+function setPicking(on) {
+  picking=on;
+  if(!on) selection.clear();
+  render()
+}
+$('#start-pick').onclick=()=> setPicking(true);
+$('#pick-cancel').onclick=()=> setPicking(false);
+$('#pick-clear').onclick=()=> { selection.clear(); render(); };
+$('#pick-all').onclick=()=> { visible().forEach(x=>selection.add(x.id)); render(); };
+$('#pick-share').onclick=()=> {
+  const items=pickedItems();
+  if(items.length) openShare(items,items.length===1?items[0].title:'選んだ記録','手動で選んだ記録')
+};
+document.addEventListener('keydown',event=> { if(event.key==='Escape'&&picking&&!document.querySelector('dialog[open]')) setPicking(false); });
+
+// 共有リンク（その時点の内容を、読み取り専用のコピーとして公開する）
+const SHARE_LIMIT=100,SHARE_TOKEN=/^[A-Za-z0-9_-]{22,64}$/;
+let shareDraft= { items:[],criteria:'' };
+function makeShareToken() {
+  const bytes=crypto.getRandomValues(new Uint8Array(16));
+  return btoa(String.fromCharCode(...bytes)).replaceAll('+','-').replaceAll('/','_').replaceAll('=','')
+}
+// mode: none = メモ・引用を含めない / safe = ネタバレなしの記録だけ / all = すべて（ネタバレ記録には印を付ける）
+function sharePayload(items,{ title,criteria,mode }) {
+  return {
+    v:1,title:String(title||'').slice(0,100),criteria:String(criteria||'').slice(0,200),sharedAt:new Date().toISOString(),
+    items:items.slice(0,SHARE_LIMIT).map(x=> {
+      const out= { title:x.title,genre:x.genre,rating:x.rating,readAt:x.readAt||null,tags:[...x.tags] };
+      if(mode!=='none'&&(mode==='all'||!x.spoiler)&&(x.notes||x.quote)) { out.notes=x.notes||''; out.quote=x.quote||''; out.spoiler=!!x.spoiler; }
+      return out
+    })
+  }
+}
+function criteriaText() {
+  const parts=[],query=$('#query').value.trim();
+  if(query) parts.push(`検索：${query}`);
+  if(filters.genre.size) parts.push(`ジャンル：${[...filters.genre].join('、')}`);
+  if(filters.tag.size) parts.push(`タグ：${[...filters.tag].join('、')}`);
+  return parts.join(' / ')||'すべての記録'
+}
+function shareUrl(id) {
+  return new URL(`share.html#${id}`,location.href).href
+}
+function legacyCopy(text) {
+  const area=document.createElement('textarea');
+  area.value=text;
+  area.setAttribute('readonly','');
+  area.style.position='fixed';
+  area.style.opacity='0';
+  document.body.append(area);
+  area.select();
+  let ok=false;
+  try { ok=document.execCommand('copy'); }
+  catch {}
+  area.remove();
+  return ok
+}
+// ボタンの文字を、少しの間だけ変えて、押せたことを伝える
+function flashButton(button,label='コピーしました ✓') {
+  if(!button) return;
+  const original=button.dataset.label||button.textContent;
+  button.dataset.label=original;
+  button.textContent=label;
+  button.classList.add('done');
+  clearTimeout(button.flashTimer);
+  button.flashTimer=setTimeout(()=> {
+    button.textContent=original;
+    button.classList.remove('done')
+  },2000)
+}
+async function copyText(text,button) {
+  let ok=true;
+  try { await navigator.clipboard.writeText(text); }
+  catch { ok=legacyCopy(text); }
+  if(!ok) { prompt('このリンクをコピーしてください',text); return; }
+  flashButton(button);
+  showToast('リンクをコピーしました。')
+}
+function openShare(items,title,criteria) {
+  shareDraft= { items,criteria };
+  $('#share-title').value=title;
+  $('#share-login').hidden=!!currentUser;
+  $('#share-create').disabled=!currentUser;
+  $('#share-summary').textContent=`共有する記録：${items.length}件（${criteria}）`+(items.length>SHARE_LIMIT?`。共有できるのは${SHARE_LIMIT}件までです。絞り込んでください。`:'');
+  $('#share-result').hidden=true;
+  $('#share-native').hidden=!navigator.share;
+  $('#share-dialog').showModal();
+  loadMyShares()
+}
+async function createShare() {
+  if(!currentUser) return;
+  const items=shareDraft.items;
+  if(!items.length) { alert('共有する記録がありません。'); return; }
+  if(items.length>SHARE_LIMIT) { alert(`共有できるのは${SHARE_LIMIT}件までです。絞り込んでください。`); return; }
+  const mode=document.querySelector('input[name=share-mode]:checked').value,days=Number($('#share-expiry').value);
+  const title=$('#share-title').value.trim()||'共有した記録';
+  const row= { id:makeShareToken(),user_id:currentUser.id,title:title.slice(0,100),item_count:items.length,payload:sharePayload(items,{ title,criteria:shareDraft.criteria,mode }),expires_at:days?new Date(Date.now()+days*86400000).toISOString():null };
+  try {
+    const { error }=await cloud.from('shares').insert(row);
+    if(error) throw error
+  }
+  catch(error) {
+    const message=String(error?.message||'');
+    alert(/too many/i.test(message)?'作成済みのリンクが多すぎます（50件まで）。不要なリンクを停止してください。':/shares|relation|schema cache|does not exist/i.test(message)?'共有機能がまだ有効になっていません。supabase-schema.sql の shares の部分を、Supabase で実行してください。':'共有リンクを作れませんでした。通信状況を確認して、もう一度お試しください。');
+    return
+  }
+  $('#share-url').value=shareUrl(row.id);
+  $('#share-result').hidden=false;
+  $('#share-url').select();
+  loadMyShares()
+}
+async function loadMyShares() {
+  const list=$('#share-list');
+  list.innerHTML='';
+  const note=text=> {
+    const li=document.createElement('li');
+    li.className='manage-empty';
+    li.textContent=text;
+    list.append(li)
+  };
+  if(!currentUser) return note('ログインすると、作成済みのリンクが見られます');
+  try {
+    const { data,error }=await cloud.from('shares').select('id,title,item_count,created_at,expires_at').order('created_at', { ascending:false });
+    if(error) throw error;
+    if(!data.length) return note('まだありません');
+    data.forEach(row=> {
+      const li=document.createElement('li'),name=document.createElement('span'),when=document.createElement('small'),copy=document.createElement('button'),stop=document.createElement('button');
+      const expired=row.expires_at&&new Date(row.expires_at)<new Date();
+      name.className='manage-name';
+      name.textContent=`${row.title}（${row.item_count}件）`;
+      when.className='trash-days';
+      when.textContent=expired?'期限切れ':row.expires_at?`${date(row.expires_at)}まで`:'期限なし';
+      copy.type='button';
+      copy.className='link';
+      copy.textContent='コピー';
+      copy.onclick=()=>copyText(shareUrl(row.id),copy);
+      stop.type='button';
+      stop.className='link danger';
+      stop.textContent='停止';
+      stop.onclick=()=>stopShare(row);
+      li.append(name,when,copy,stop);
+      list.append(li)
+    })
+  }
+  catch { note('リンクの一覧を読み込めませんでした'); }
+}
+async function stopShare(row) {
+  if(!confirm(`「${row.title}」の共有を停止します。このリンクでは、見られなくなります。`)) return;
+  try {
+    const { error }=await cloud.from('shares').delete().eq('id',row.id);
+    if(error) throw error
+  }
+  catch { alert('停止できませんでした。通信状況を確認して、もう一度お試しください。'); return; }
+  loadMyShares()
+}
+$('#open-share').onclick=()=>openShare(visible(),criteriaText()==='すべての記録'?'私のよかった記録':criteriaText(),criteriaText());
+$('#share-one').onclick=()=> {
+  const item=state.items.find(x=>x.id===$('#id').value);
+  if(!item||(dirty&&!confirm(DISCARD_MESSAGE))) return;
+  closeEditor(true);
+  openShare([item],item.title,`「${item.title}」1件`)
+};
+$('#share-create').onclick=createShare;
+$('#share-copy').onclick=()=>copyText($('#share-url').value,$('#share-copy'));
+$('#share-native').onclick=()=> { navigator.share?.({ title:$('#share-title').value||'よかっ棚',url:$('#share-url').value }).catch(()=> {}); };
+$('#close-share').onclick=()=>$('#share-dialog').close();
+
+// オフラインでも開けるように、Service Worker を登録する（https のときだけ）
+if('serviceWorker' in navigator&&location.protocol==='https:') {
+  window.addEventListener('load',()=> { navigator.serviceWorker.register('sw.js').catch(()=> {}); });
+}
+
 // 別のタブでの変更を取り込む（編集中は触らない）
 window.addEventListener('storage',event=> {
   if(event.key!==KEY||!event.newValue) return;
   state.items=mergeItems(state.items,load());
   if(!$('#dialog').open) render()
 });
-window.addEventListener('online',flushPending);
+window.addEventListener('online',()=> { updateSyncStatus(); flushPending(); });
+window.addEventListener('offline',()=>updateSyncStatus());
 document.addEventListener('visibilitychange',()=> { if(document.visibilityState==='visible') flushPending(); });
 setInterval(flushPending,60000);
 {
