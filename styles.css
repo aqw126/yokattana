@@ -752,7 +752,7 @@ dialog footer {
 #share-create:disabled { opacity:.5; }
 
 /* 共有リンクの閲覧ページ */
-.share h1 { font-family:Georgia,"Yu Mincho",serif; font-size:26px; margin:16px 0 6px; }
+.share h1 { font-family:inherit; font-size:24px; font-weight:700; margin:16px 0 6px; }
 .share-meta { color:var(--muted); font-size:13px; margin:0 0 6px; }
 .share-note { color:var(--warm); font-size:13px; margin:0 0 16px; }
 .share-message { color:var(--muted); padding:40px 0; text-align:center; }
