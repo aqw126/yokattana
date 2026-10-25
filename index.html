@@ -15,7 +15,7 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self'; img-src 'self' data: blob:; connect-src 'self' https://ndiwvgsgpmipypcipcpo.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'self'">
     <link rel="icon" href="icon.svg" type="image/svg+xml">
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="styles.css?v=202610252048">
+    <link rel="stylesheet" href="styles.css?v=202610252103">
   </head>
   <body>
     <header>
@@ -25,7 +25,7 @@
         </b>
         よかっ棚
       </a>
-      <nav><span id="sync-status" class="sync-status">この端末に保存中</span><button class="secondary" id="auth-button" type="button">ログイン</button>
+      <nav><span id="sync-status" class="sync-status">この端末に保存中</span><span id="account-label" class="sync-status account-label" hidden></span><button class="secondary" id="auth-button" type="button">ログイン</button>
         <button class="secondary" id="import">
           データを読み込む
         </button>
@@ -414,8 +414,8 @@
       </article>
     </template>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js" integrity="sha384-TcHRA3zBbn+Lexh5n+Oil4guNPOS3rjNDpGRAN46u/s/mB2IZ50ceC6TYDU2yvgK" crossorigin="anonymous"></script>
-    <script src="supabase-config.js?v=202610252048"></script>
-    <script src="app.js?v=202610252048"></script>
+    <script src="supabase-config.js?v=202610252103"></script>
+    <script src="app.js?v=202610252103"></script>
   </body>
 </html>
 
