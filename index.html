@@ -15,9 +15,10 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self'; img-src 'self' data: blob:; connect-src 'self' https://ndiwvgsgpmipypcipcpo.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'self'">
     <link rel="icon" href="icon.svg" type="image/svg+xml">
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="styles.css?v=202610252103">
+    <link rel="stylesheet" href="styles.css?v=202610252113">
   </head>
   <body>
+    <a class="skip-link" href="#top">本文へ移動</a>
     <header>
       <a class="brand" href="#top">
         <b>
@@ -32,7 +33,7 @@
         <button id="add">
           ＋ 記録を追加
         </button>
-        <input id="file" type="file" accept=".json,.csv,application/json,text/csv" hidden>
+        <input id="file" aria-label="読み込むファイル" type="file" accept=".json,.csv,application/json,text/csv" hidden>
       </nav>
     </header>
     <main id="top">
@@ -179,7 +180,7 @@
     </main>
     <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
     <p class="site-footer"><a href="privacy.html">プライバシーポリシー</a></p>
-    <dialog id="dialog">
+    <dialog id="dialog" aria-labelledby="modalTitle">
       <form id="form">
         <section class="modalhead">
           <div>
@@ -190,7 +191,7 @@
               記録を追加
             </h2>
           </div>
-          <button class="x" type="button" id="close">
+          <button class="x" type="button" id="close" aria-label="閉じる">
             ×
           </button>
         </section>
@@ -258,7 +259,7 @@
               <small>追加したタグは個別に削除できます</small>
               <div id="tag-chips" class="tag-chips" aria-live="polite"></div>
               <div class="tag-input-row">
-                <input id="tag-input" maxlength="80" placeholder="例：バトル、冒険">
+                <input id="tag-input" aria-label="追加するタグ" maxlength="80" placeholder="例：バトル、冒険">
                 <button id="add-tag" class="secondary" type="button">追加</button>
               </div>
             </div>
@@ -284,12 +285,12 @@
         </footer>
       </form>
     </dialog>
-    <dialog id="auth-dialog" class="auth-dialog">
+    <dialog id="auth-dialog" class="auth-dialog" aria-labelledby="auth-title">
       <form id="auth-form">
         <section class="modalhead">
           <div>
             <p class="eyebrow">ACCOUNT</p>
-            <h2>同期用アカウント</h2>
+            <h2 id="auth-title">同期用アカウント</h2>
           </div>
           <button class="x" id="close-auth" type="button" aria-label="閉じる">×</button>
         </section>
@@ -298,12 +299,12 @@
         <footer><button type="button" id="google-button">Googleでログイン</button></footer>
       </form>
     </dialog>
-    <dialog id="trash-dialog">
+    <dialog id="trash-dialog" aria-labelledby="trash-title">
       <form method="dialog">
         <section class="modalhead">
           <div>
             <p class="eyebrow">TRASH</p>
-            <h2>ごみ箱</h2>
+            <h2 id="trash-title">ごみ箱</h2>
           </div>
           <button class="x" id="close-trash" type="button" aria-label="閉じる">×</button>
         </section>
@@ -312,12 +313,12 @@
         <p class="trash-footer"><button type="button" class="link danger" id="empty-trash" hidden>ごみ箱を空にする</button></p>
       </form>
     </dialog>
-    <dialog id="data-dialog">
+    <dialog id="data-dialog" aria-labelledby="data-title">
       <form method="dialog">
         <section class="modalhead">
           <div>
             <p class="eyebrow">DATA</p>
-            <h2>データの管理</h2>
+            <h2 id="data-title">データの管理</h2>
           </div>
           <button class="x" id="close-data" type="button" aria-label="閉じる">×</button>
         </section>
@@ -341,12 +342,12 @@
         </section>
       </form>
     </dialog>
-    <dialog id="manage-dialog">
+    <dialog id="manage-dialog" aria-labelledby="manage-heading">
       <form method="dialog">
         <section class="modalhead">
           <div>
             <p class="eyebrow">ORGANIZE</p>
-            <h2>ジャンル・タグの整理</h2>
+            <h2 id="manage-heading">ジャンル・タグの整理</h2>
           </div>
           <button class="x" id="close-manage" type="button" aria-label="閉じる">×</button>
         </section>
@@ -357,12 +358,12 @@
         <ul id="manage-tags" class="manage-list"></ul>
       </form>
     </dialog>
-    <dialog id="review-dialog">
+    <dialog id="review-dialog" aria-labelledby="review-title">
       <form method="dialog">
         <section class="modalhead">
           <div>
             <p class="eyebrow">REVIEW</p>
-            <h2>振り返り</h2>
+            <h2 id="review-title">振り返り</h2>
           </div>
           <button class="x" id="close-review" type="button" aria-label="閉じる">×</button>
         </section>
@@ -414,8 +415,8 @@
       </article>
     </template>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js" integrity="sha384-TcHRA3zBbn+Lexh5n+Oil4guNPOS3rjNDpGRAN46u/s/mB2IZ50ceC6TYDU2yvgK" crossorigin="anonymous"></script>
-    <script src="supabase-config.js?v=202610252103"></script>
-    <script src="app.js?v=202610252103"></script>
+    <script src="supabase-config.js?v=202610252113"></script>
+    <script src="app.js?v=202610252113"></script>
   </body>
 </html>
 
