@@ -585,7 +585,7 @@ dialog footer {
   font-weight:700;
 }
 @media(max-width:720px) {
-  .sync-status { display:none; }
+  .sync-status { order:3; flex-basis:100%; font-size:11px; }
 }
 
 .auth-dialog { width:min(430px,calc(100vw - 28px)); }

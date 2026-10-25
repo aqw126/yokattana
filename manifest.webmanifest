@@ -1,0 +1,11 @@
+{
+  "name": "よかっ棚",
+  "short_name": "よかっ棚",
+  "description": "読んだもの、観たものを自分の言葉で残す、個人用の記録アプリ。",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f4f6f0",
+  "theme_color": "#4d725d",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}
