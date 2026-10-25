@@ -6,7 +6,15 @@
     <title>
       よかっ棚
     </title>
-    <link rel="stylesheet" href="styles.css">
+    <meta name="description" content="読んだもの、観たものを自分の言葉で残す、個人用の記録アプリ。">
+    <meta name="theme-color" content="#4d725d">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="よかっ棚">
+    <meta property="og:description" content="読んだもの、観たものを自分の言葉で残す、個人用の記録アプリ。">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self'; img-src 'self' data: blob:; connect-src 'self' https://ndiwvgsgpmipypcipcpo.supabase.co; manifest-src 'self'; base-uri 'none'; form-action 'self'">
+    <link rel="icon" href="icon.svg" type="image/svg+xml">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="stylesheet" href="styles.css?v=202610251142">
   </head>
   <body>
     <header>
@@ -38,7 +46,7 @@
             自分の言葉で残す。
           </h1>
           <p>
-            本、漫画、アニメ、技術書。ジャンルを気にせず、あなたの「よかった」を集める場所です。
+            本、漫画、アニメ。ジャンルを気にせず、あなたの「よかった」を集める場所です。
           </p>
         </div>
         <aside>
@@ -71,7 +79,7 @@
       <section class="filters">
         <label class="search">
           ⌕
-          <input id="query" type="search" placeholder="タイトル、ジャンル、タグで検索">
+          <input id="query" type="search" placeholder="タイトル、ジャンル、タグ、メモで検索" aria-label="記録を検索">
         </label>
         <label>
           <small>
@@ -206,7 +214,7 @@
                 <strong id="ratingValue">
                   —
                 </strong>
-                <input id="rating" type="range" min="3" max="5" step="0.1" value="3">
+                <input id="rating" aria-label="評価" type="range" min="3" max="5" step="0.1" value="3">
                 <small class="range">
                   <span>
                     3.0
@@ -294,9 +302,9 @@
         </footer>
       </article>
     </template>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="supabase-config.js"></script>
-    <script src="app.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js" integrity="sha384-TcHRA3zBbn+Lexh5n+Oil4guNPOS3rjNDpGRAN46u/s/mB2IZ50ceC6TYDU2yvgK" crossorigin="anonymous"></script>
+    <script src="supabase-config.js?v=202610251142"></script>
+    <script src="app.js?v=202610251142"></script>
   </body>
 </html>
 

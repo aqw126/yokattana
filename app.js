@@ -1,67 +1,164 @@
-const KEY='watashi-no-hondana-v1',OWNER_KEY='watashi-no-hondana-owner',$=s=>document.querySelector(s);
+const KEY='yokattana-v1',OWNER_KEY='yokattana-owner',PENDING_KEY='yokattana-pending',$=s=>document.querySelector(s);
+const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const COVER=/^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+$/;
+const TOMBSTONE_DAYS=90,SYNC_CHUNK=20,PAGE_SIZE=100,COVER_LIMIT=150000;
 const cloud=window.supabase?.createClient(window.SUPABASE_CONFIG?.url,window.SUPABASE_CONFIG?.publishableKey);
-let currentUser=null;
+let currentUser=null,flushing=false,shrinking=false,dirty=false;
 
-function setSyncStatus(message,connected=false) {
+// 旧名称で保存されたデータを引き継ぐ
+try {
+  [['watashi-no-hondana-v1',KEY],['watashi-no-hondana-owner',OWNER_KEY]].forEach(([from,to])=> {
+    const value=localStorage.getItem(from);
+    if(value===null) return;
+    if(localStorage.getItem(to)===null) localStorage.setItem(to,value);
+    localStorage.removeItem(from)
+  })
+}
+catch {}
+
+const pending=new Set((()=> {
+  try { return JSON.parse(localStorage.getItem(PENDING_KEY))||[]; }
+  catch { return[]; }
+})());
+function savePending() {
+  try { localStorage.setItem(PENDING_KEY,JSON.stringify([...pending])); }
+  catch {}
+}
+function updateSyncStatus(failed=false) {
   const status=$('#sync-status');
+  let message='この端末に保存中',connected=false;
+  if(!cloud) message='同期設定が見つかりません';
+  else if(!currentUser) message='ログインすると自動同期';
+  else if(failed||pending.size) message=pending.size?`同期待ち ${pending.size}件`:'同期に失敗しました';
+  else { message='自動同期中'; connected=true; }
   status.textContent=message;
   status.classList.toggle('connected',connected)
-}
-async function syncItem(item) {
-  if(!currentUser) return true;
-  const { error }=await cloud.from('library_items').upsert({ id:item.id,user_id:currentUser.id,payload:item,updated_at:item.updatedAt });
-  if(error) { setSyncStatus('同期に失敗しました'); return false; }
-  setSyncStatus('自動同期中',true);
-  return true
 }
 function isNewer(a,b) {
   return new Date(a.updatedAt)>new Date(b.updatedAt)
 }
+function mergeItems(local,incoming) {
+  const merged=new Map(local.map(item=>[item.id,item]));
+  incoming.forEach(item=> { const current=merged.get(item.id); if(!current||isNewer(item,current)) merged.set(item.id,item); });
+  return[...merged.values()]
+}
+async function syncItems(items) {
+  if(!currentUser||!items.length) return true;
+  let ok=true;
+  for(let i=0;i<items.length;i+=SYNC_CHUNK) {
+    const chunk=items.slice(i,i+SYNC_CHUNK);
+    try {
+      const { error }=await cloud.from('library_items').upsert(chunk.map(item=>( { id:item.id,user_id:currentUser.id,payload:item,updated_at:item.updatedAt } )));
+      if(error) throw error;
+      chunk.forEach(item=> {
+        // 送信中にさらに編集された記録は、同期待ちのままにする
+        if(state.items.find(x=>x.id===item.id)?.updatedAt===item.updatedAt) pending.delete(item.id)
+      })
+    }
+    catch {
+      chunk.forEach(item=>pending.add(item.id));
+      ok=false
+    }
+  }
+  savePending();
+  updateSyncStatus();
+  return ok
+}
+function syncItem(item) {
+  return syncItems([item])
+}
+function markPending(items) {
+  if(!currentUser) return;
+  items.forEach(x=>pending.add(x.id));
+  savePending()
+}
+async function flushPending() {
+  if(!currentUser||flushing) return true;
+  const ids=new Set(state.items.map(x=>x.id));
+  [...pending].filter(id=>!ids.has(id)).forEach(id=>pending.delete(id));
+  if(!pending.size) { savePending(); updateSyncStatus(); return true; }
+  flushing=true;
+  try { return await syncItems(state.items.filter(x=>pending.has(x.id))); }
+  finally { flushing=false; }
+}
+async function fetchRemoteItems() {
+  const rows=[];
+  for(let from=0;;from+=PAGE_SIZE) {
+    const { data,error }=await cloud.from('library_items').select('payload').order('id').range(from,from+PAGE_SIZE-1);
+    if(error) throw error;
+    rows.push(...data);
+    if(data.length<PAGE_SIZE) return rows
+  }
+}
 async function loadCloudItems() {
-  const { data,error }=await cloud.from('library_items').select('payload');
-  if(error) { setSyncStatus('同期に失敗しました'); return; }
+  let rows;
+  try { rows=await fetchRemoteItems(); }
+  catch { updateSyncStatus(true); return; }
   const remote=new Map();
-  data.forEach(row=> { const item=normalizeItem(row.payload); if(item) remote.set(item.id,item); });
-  const merged=new Map(state.items.map(item=>[item.id,item]));
-  remote.forEach((item,id)=> { const local=merged.get(id); if(!local||isNewer(item,local)) merged.set(id,item); });
-  state.items=[...merged.values()];
+  rows.forEach(row=> { const item=normalizeItem(row.payload); if(item) remote.set(item.id,item); });
+  const cutoff=Date.now()-TOMBSTONE_DAYS*86400000;
+  const merged=mergeItems(state.items,[...remote.values()]);
+  // 十分古い削除記録は、端末とクラウドの両方から片付ける
+  const expired=merged.filter(x=>x.deleted&&new Date(x.updatedAt)<cutoff);
+  state.items=merged.filter(x=>!expired.includes(x));
   save();
-  await Promise.all(state.items.filter(item=> { const r=remote.get(item.id); return !r||isNewer(item,r); }).map(syncItem));
-  render()
+  if(expired.length) {
+    try { await cloud.from('library_items').delete().in('id',expired.map(x=>x.id)); }
+    catch {}
+  }
+  await syncItems(state.items.filter(item=> { const r=remote.get(item.id); return !r||isNewer(item,r); }));
+  render();
+  shrinkExistingCovers()
 }
 function setAuthMessage(message='') {
   $('#auth-message').textContent=message
 }
 async function finishLogin(user) {
   currentUser=user;
-  $('#auth-dialog').close();
+  if($('#auth-dialog').open) $('#auth-dialog').close();
   $('#auth-button').textContent='ログアウト';
   // 別アカウントのローカルデータを、ログインしたアカウントへ混ぜない
   if(localStorage.getItem(OWNER_KEY)!==user.id) {
-    if(localStorage.getItem(OWNER_KEY)) { state.items=[]; save(); }
+    if(localStorage.getItem(OWNER_KEY)) { state.items=[]; pending.clear(); savePending(); save(); }
     localStorage.setItem(OWNER_KEY,user.id)
   }
+  // ログイン直後は、クラウドとの差分をまとめて送るので、以前の同期待ちは破棄する
+  pending.clear();
+  savePending();
+  updateSyncStatus();
   await loadCloudItems()
 }
+function applySignedOut() {
+  currentUser=null;
+  state.items=[];
+  pending.clear();
+  savePending();
+  save();
+  localStorage.removeItem(OWNER_KEY);
+  $('#auth-button').textContent='ログイン';
+  updateSyncStatus();
+  render()
+}
 async function initializeCloud() {
-  if(!cloud) { setSyncStatus('同期設定が見つかりません'); return; }
-  const { data }=await cloud.auth.getSession();
-  currentUser=data.session?.user||null;
-  if(currentUser) await finishLogin(currentUser);
-  else setSyncStatus('ログインすると自動同期')
+  updateSyncStatus();
+  if(!cloud) return;
+  // 別のタブでのログアウトや、期限切れによるログアウトも反映する
+  cloud.auth.onAuthStateChange(event=> { if(event==='SIGNED_OUT'&&currentUser) applySignedOut(); });
+  try {
+    const { data }=await cloud.auth.getSession();
+    if(data.session?.user) await finishLogin(data.session.user);
+    else { pending.clear(); savePending(); }
+  }
+  catch { updateSyncStatus(true); }
 }
 async function toggleAuthentication() {
+  if(!cloud) { alert('同期の設定が見つかりません。'); return; }
   if(currentUser) {
-    const results=await Promise.all(state.items.map(syncItem));
-    if(results.includes(false)&&!confirm('同期できていない記録があります。ログアウトするとこの端末から消えます。続けますか？')) return;
-    await cloud.auth.signOut();
-    currentUser=null;
-    state.items=[];
-    save();
-    localStorage.removeItem(OWNER_KEY);
-    render();
-    $('#auth-button').textContent='ログイン';
-    setSyncStatus('ログインすると自動同期');
+    await flushPending();
+    if(pending.size&&!confirm('同期できていない記録があります。ログアウトするとこの端末から消えます。続けますか？')) return;
+    try { await cloud.auth.signOut(); }
+    catch {}
+    if(currentUser) applySignedOut();
     return
   }
   setAuthMessage();
@@ -69,15 +166,16 @@ async function toggleAuthentication() {
 }
 async function signInWithGoogle() {
   setAuthMessage('Googleのログイン画面に移動します…');
-  const { error }=await cloud.auth.signInWithOAuth({ provider:'google',options:{ redirectTo:location.origin+location.pathname } });
-  if(error) setAuthMessage('ログインを開始できませんでした。時間をおいてもう一度お試しください。')
+  try {
+    const { error }=await cloud.auth.signInWithOAuth({ provider:'google',options:{ redirectTo:location.origin+location.pathname } });
+    if(error) throw error
+  }
+  catch { setAuthMessage('ログインを開始できませんでした。通信状況を確認して、もう一度お試しください。'); }
 }
 
 const state= {
   items:load(),cover:null,formTags:[]
 };
-const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const COVER=/^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+$/;
 function validDate(v,fallback) {
   const t=new Date(v);
   return typeof v==='string'&&!isNaN(t)?t.toISOString():fallback
@@ -118,10 +216,9 @@ function save() {
 function liveItems() {
   return state.items.filter(x=>!x.deleted)
 }
-function readCover(file) {
+function scaleImage(src) {
   return new Promise((resolve,reject)=> {
-    if(!file.type.startsWith('image/')) return reject(new Error('画像ファイルを選んでください。'));
-    const url=URL.createObjectURL(file),img=new Image();
+    const img=new Image();
     img.onload=()=> {
       const scale=Math.min(1,600/Math.max(img.width,img.height)),c=document.createElement('canvas'),g=c.getContext('2d');
       c.width=Math.max(1,Math.round(img.width*scale));
@@ -129,12 +226,39 @@ function readCover(file) {
       g.fillStyle='#fff';
       g.fillRect(0,0,c.width,c.height);
       g.drawImage(img,0,0,c.width,c.height);
-      URL.revokeObjectURL(url);
       resolve(c.toDataURL('image/jpeg',0.8))
     };
-    img.onerror=()=> { URL.revokeObjectURL(url); reject(new Error('画像を読み込めませんでした。')); };
-    img.src=url
+    img.onerror=()=>reject(new Error('画像を読み込めませんでした。'));
+    img.src=src
   })
+}
+async function readCover(file) {
+  if(!file.type.startsWith('image/')) throw new Error('画像ファイルを選んでください。');
+  const url=URL.createObjectURL(file);
+  try { return await scaleImage(url); }
+  finally { URL.revokeObjectURL(url); }
+}
+// 以前の大きな表紙画像を縮小して、保存容量と同期量を減らす
+async function shrinkExistingCovers() {
+  if(shrinking) return;
+  shrinking=true;
+  try {
+    const changed=[];
+    for(const item of state.items.filter(x=>x.cover&&x.cover.length>COVER_LIMIT)) {
+      try {
+        const small=await scaleImage(item.cover);
+        if(small.length<item.cover.length) changed.push( { ...item,cover:small,updatedAt:new Date().toISOString() } );
+      }
+      catch {}
+    }
+    if(!changed.length) return;
+    const byId=new Map(changed.map(x=>[x.id,x]));
+    if(!commit(state.items.map(x=>byId.get(x.id)||x),true)) return;
+    markPending(changed);
+    render();
+    await flushPending()
+  }
+  finally { shrinking=false; }
 }
 function e(v='') {
   return String(v).replace(/[&<>'"]/g,c=>( {
@@ -191,13 +315,13 @@ function render() {
     n.querySelector('.meta b').textContent=x.genre;
     n.querySelector('.meta strong').textContent='★ '+Number(x.rating).toFixed(1);
     n.querySelector('h3').textContent=x.title;
-    n.querySelector('.tags').innerHTML=x.tags.slice(0,4).map(t=>`<span>${e(t)}</span>`).join('');
+    n.querySelector('.tags').innerHTML=x.tags.slice(0,4).map(t=>`<span>${e(t)}</span>`).join('')+(x.tags.length>4?`<span>+${x.tags.length-4}</span>`:'');
     let p=n.querySelector('.cardbody p');
     p.textContent=x.notes||'';
     p.hidden=!x.notes;
     n.querySelector('footer small').textContent=date(x.createdAt)+' に追加';
-    n.querySelector('.open').onclick=()=>open(x);
-    n.querySelector('.edit').onclick=()=>open(x);
+    n.querySelector('.open').onclick=()=>openEditor(x);
+    n.querySelector('.edit').onclick=()=>openEditor(x);
     grid.append(n)
   })
 }
@@ -224,6 +348,7 @@ function renderFormTags() {
     chip.setAttribute('aria-label',`${tag} を削除`);
     chip.onclick=()=> {
       state.formTags=state.formTags.filter((_,tagIndex)=>tagIndex!==index);
+      dirty=true;
       renderFormTags()
     };
     container.append(chip)
@@ -235,19 +360,21 @@ function addFormTag() {
   if(!tag||state.formTags.includes(tag)) return;
   state.formTags.push(tag);
   input.value='';
+  dirty=true;
   renderFormTags()
 }
-function reset() {
+function resetForm() {
   $('#form').reset();
   $('#id').value='';
   state.cover=null;
   state.formTags=[];
   renderFormTags();
   $('#ratingValue').textContent=Number($('#rating').value).toFixed(1);
-  preview(null)
+  preview(null);
+  dirty=false
 }
-function open(x) {
-  reset();
+function openEditor(x) {
+  resetForm();
   $('#kicker').textContent=x?'EDIT ENTRY':'NEW ENTRY';
   $('#modalTitle').textContent=x?'記録を編集':'記録を追加';
   $('#delete').hidden=!x;
@@ -266,35 +393,40 @@ function open(x) {
   $('#dialog').showModal();
   $('#title').focus()
 }
-function close() {
+const DISCARD_MESSAGE='保存していない変更があります。破棄して閉じますか？';
+function closeEditor(force=false) {
+  if(!force&&dirty&&!confirm(DISCARD_MESSAGE)) return;
   $('#dialog').close()
 }
-function commit(items) {
+function commit(items,quiet=false) {
   const previous=state.items;
   state.items=items;
   if(save()) return true;
   state.items=previous;
-  alert('保存できませんでした。ブラウザの保存容量が足りない可能性があります。バックアップを書き出して、不要な記録や画像を減らしてください。');
+  if(!quiet) alert('保存できませんでした。ブラウザの保存容量が足りない可能性があります。バックアップを書き出して、不要な記録や画像を減らしてください。');
   return false
 }
-function backup() {
+function backup(prefix='yokattana') {
   let u=URL.createObjectURL(new Blob([JSON.stringify( {
-    version:1,exportedAt:new Date().toISOString(),items:state.items
+    version:1,exportedAt:new Date().toISOString(),items:liveItems()
   },null,2)], {
     type:'application/json'
   })),a=document.createElement('a');
   a.href=u;
-  a.download=`watashi-no-hondana-${new Date().toISOString().slice(0,10)}.json`;
+  a.download=`${prefix}-${new Date().toISOString().slice(0,10)}.json`;
   a.click();
   URL.revokeObjectURL(u)
 }
 $('#auth-button').onclick=toggleAuthentication;
 $('#google-button').onclick=signInWithGoogle;
 $('#close-auth').onclick=()=>$('#auth-dialog').close();
-$('#add').onclick=()=>open();
-$('#emptyAdd').onclick=()=>open();
-$('#close').onclick=close;
-$('#cancel').onclick=close;
+$('#add').onclick=()=>openEditor();
+$('#emptyAdd').onclick=()=>openEditor();
+$('#close').onclick=()=>closeEditor();
+$('#cancel').onclick=()=>closeEditor();
+// Esc で閉じるときも、未保存の変更を確認する
+$('#dialog').addEventListener('cancel',event=> { if(dirty&&!confirm(DISCARD_MESSAGE)) event.preventDefault(); });
+$('#form').addEventListener('input',()=> { dirty=true; });
 $('#rating').oninput=x=>$('#ratingValue').textContent=Number(x.target.value).toFixed(1);
 $('#add-tag').onclick=addFormTag;
 $('#tag-input').addEventListener('keydown', event=> {
@@ -308,6 +440,7 @@ $('#cover').onchange=async x=> {
   if(!f) return;
   try {
     state.cover=await readCover(f);
+    dirty=true;
     preview(state.cover)
   }
   catch(error) {
@@ -317,17 +450,20 @@ $('#cover').onchange=async x=> {
 };
 $('#removeCover').onclick=()=> {
   state.cover=null;
+  dirty=true;
   $('#cover').value='';
   preview(null)
 };
 $('#form').onsubmit=x=> {
   x.preventDefault();
+  addFormTag();
   let id=$('#id').value,old=state.items.find(x=>x.id===id),entry= {
     id:id||crypto.randomUUID(),title:$('#title').value.trim(),genre:$('#entryGenre').value.trim(),rating:Number($('#rating').value),tags:[...state.formTags],notes:$('#notes').value.trim(),cover:state.cover,createdAt:old?.createdAt||new Date().toISOString(),updatedAt:new Date().toISOString(),deleted:false
   };
   if(!commit(old?state.items.map(x=>x.id===id?entry:x):[...state.items,entry])) return;
+  markPending([entry]);
   syncItem(entry);
-  close();
+  closeEditor(true);
   render()
 };
 $('#delete').onclick=()=> {
@@ -336,13 +472,14 @@ $('#delete').onclick=()=> {
     // 他の端末へ削除を伝えるため、中身を消した墓標として残す
     const tombstone= { ...old,title:'',notes:'',cover:null,tags:[],deleted:true,updatedAt:new Date().toISOString() };
     if(!commit(state.items.map(x=>x.id===id?tombstone:x))) return;
+    markPending([tombstone]);
     syncItem(tombstone);
-    close();
+    closeEditor(true);
     render()
   }
 };
 ['#query','#genre','#tag','#sort'].forEach(s=>$(s).addEventListener(s==='#query'?'input':'change',render));
-$('#export').onclick=backup;
+$('#export').onclick=()=>backup();
 $('#import').onclick=()=>$('#file').click();
 $('#file').onchange=x=> {
   let f=x.target.files[0];
@@ -354,15 +491,18 @@ $('#file').onchange=x=> {
       if(!Array.isArray(a))throw 0;
       const imported=a.map(normalizeItem).filter(Boolean);
       if(!imported.length&&a.length)throw 0;
-      if(confirm(`${imported.length}件のデータで現在の記録を置き換えます。よろしいですか？`)) {
+      if(confirm(`${imported.length}件のデータで現在の記録を置き換えます。置き換える前の記録は、バックアップとして自動で保存します。よろしいですか？`)) {
+        if(liveItems().length) backup('yokattana-before-import');
         const now=new Date().toISOString(),ids=new Set(imported.map(x=>x.id));
         // 読み込みに含まれない既存の記録は削除扱いにして、クラウドからも消す
         const removed=state.items.filter(x=>!x.deleted&&!ids.has(x.id)).map(x=>( { ...x,title:'',notes:'',cover:null,tags:[],deleted:true,updatedAt:now } ));
         const kept=state.items.filter(x=>x.deleted&&!ids.has(x.id));
         const next=imported.map(x=>( { ...x,updatedAt:now } ));
         if(!commit([...kept,...removed,...next])) return;
-        Promise.all([...removed,...next].map(syncItem));
-        render()
+        markPending([...removed,...next]);
+        syncItems([...removed,...next]);
+        render();
+        shrinkExistingCovers()
       }
     }
     catch {
@@ -372,7 +512,15 @@ $('#file').onchange=x=> {
   r.readAsText(f);
   x.target.value=''
 };
+// 別のタブでの変更を取り込む（編集中は触らない）
+window.addEventListener('storage',event=> {
+  if(event.key!==KEY||!event.newValue) return;
+  state.items=mergeItems(state.items,load());
+  if(!$('#dialog').open) render()
+});
+window.addEventListener('online',flushPending);
+document.addEventListener('visibilitychange',()=> { if(document.visibilityState==='visible') flushPending(); });
+setInterval(flushPending,60000);
 render();
 initializeCloud();
-
-
+shrinkExistingCovers()

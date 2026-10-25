@@ -1,0 +1,15 @@
+# Supabase の無料プロジェクトは、一定期間アクセスがないと一時停止される。
+# 週に1回、公開キーで軽いリクエストを送って停止を防ぐ。
+name: keepalive
+on:
+  schedule:
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          curl --fail --silent --show-error \
+            -H "apikey: sb_publishable_x9MPHM1V8jQkkgIStYFWZQ_OEyy7iPc" \
+            "https://ndiwvgsgpmipypcipcpo.supabase.co/rest/v1/library_items?select=id&limit=1"
