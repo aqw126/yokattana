@@ -282,6 +282,11 @@ function alltags() {
   return[...new Set(liveItems().flatMap(x=>x.tags))].sort((a,b)=>a.localeCompare(b,'ja'))
 }
 const filters= { genre:new Set(),tag:new Set() },filterKeys= {};
+// 選択肢が多いときのために、入力した文字で一覧を絞る
+function applyOptionSearch(root) {
+  const q=root.querySelector('.multi-search').value.trim().toLocaleLowerCase('ja');
+  root.querySelectorAll('.multi-panel label').forEach(label=> { label.hidden=!!q&&!label.textContent.toLocaleLowerCase('ja').includes(q); });
+}
 // 複数選択のフィルター。選択肢が変わったときだけ作り直す（操作中のフォーカスを保つ）
 function renderFilter(kind,values) {
   const root=$(`#${kind}-filter`),panel=root.querySelector('.multi-panel'),selected=filters[kind],key=values.join(' ');
@@ -303,6 +308,7 @@ function renderFilter(kind,values) {
     })
   }
   panel.querySelectorAll('input').forEach(box=> { box.checked=selected.has(box.value); });
+  applyOptionSearch(root);
   root.querySelector('.multi-value').textContent=selected.size?[...selected].join('、'):'すべて'
 }
 function date(v) {
@@ -527,6 +533,20 @@ $('#delete').onclick=()=> {
   }
 };
 ['#query','#sort'].forEach(s=>$(s).addEventListener(s==='#query'?'input':'change',render));
+document.querySelectorAll('.multi').forEach(root=> {
+  const search=root.querySelector('.multi-search');
+  search.addEventListener('input',()=>applyOptionSearch(root));
+  // Enter で、絞り込まれた先頭の選択肢を切り替える
+  search.addEventListener('keydown',event=> {
+    if(event.key!=='Enter') return;
+    event.preventDefault();
+    root.querySelector('.multi-panel label:not([hidden]) input')?.click()
+  });
+  root.addEventListener('toggle',()=> {
+    if(!root.open) { search.value=''; applyOptionSearch(root); return; }
+    search.focus()
+  })
+});
 document.querySelectorAll('.multi-clear').forEach(button=> {
   button.onclick=()=> {
     filters[button.closest('.multi').id.replace('-filter','')].clear();
