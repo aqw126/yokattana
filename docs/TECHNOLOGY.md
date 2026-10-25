@@ -36,6 +36,7 @@ GitHub ………… ソースの管理・自動テスト・定期実行（Action
 | **JavaScript（素のまま）** | すべての動作。ビルドも外部の枠組みもなし | `app.js`（記録）、`share.js`（共有ページ）、`theme.js`（テーマ） |
 | **localStorage** | ブラウザ内の保存領域（約5MB）。記録の本体の置き場所 | `app.js:1`（キー名）、`save()`、`load()` |
 | **Canvas API** | 表紙画像を、長辺600pxのJPEGに縮小 | `app.js:261`（`scaleImage`）、`:277`（`readCover`） |
+| **fetch + 外部の作品データ** | 作品の自動入力。本は国立国会図書館サーチ（OpenSearch・XML）、漫画・アニメは AniList（GraphQL）を、キー不要で直接呼ぶ。本の検索は遅いので、届いた順に候補を出す。表紙は画像を取得して Canvas で縮小し、data URL にして保存 | `app.js` の `runWorkSearch`、`parseNdl`、`parseAniList`、`applyWork` |
 | **Blob / URL.createObjectURL** | JSON・CSV をファイルとして書き出す | `app.js:539`（`backup`）、`:675`（`exportCsv`） |
 | **TextDecoder** | UTF-8 で読めなければ Shift_JIS で読み直す | `app.js:745`（`readText`） |
 | **Web Crypto** | 記録のID（`randomUUID`）と、共有リンクの乱数（128ビット） | `app.js:229`、`:1082`（`makeShareToken`） |

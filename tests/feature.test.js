@@ -367,3 +367,85 @@ test('選んで共有: 選択用のチェックに、作品名入りの名前が
   setItems([make({ title: '火車' })]);
   eq(cards()[0].querySelector('.pick-box').getAttribute('aria-label'), '火車を共有に含める');
 });
+
+// ---- 作品の自動入力 ----
+const NDL_XML = `<rss xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" version="2.0"><channel>
+<item><dc:title>稲荷書店きつね堂</dc:title><dc:creator>蒼月, 海里, 1983-</dc:creator><dc:subject xsi:type="dcndl:NDC10">913.6</dc:subject></item>
+<item><dc:title>火車</dc:title><dc:creator>宮部／みゆき</dc:creator><dc:subject xsi:type="dcndl:NDC9">913.6</dc:subject><dc:date>1998</dc:date></item>
+<item><dc:title>火車</dc:title><dc:creator>宮部, みゆき, 1960-</dc:creator><dc:date>1992</dc:date></item>
+<item><dc:title>火車</dc:title><dc:creator>石倉, 久四郎, 1893-</dc:creator></item>
+<item><dc:title>帶我走吧!火車</dc:title></item>
+</channel></rss>`;
+const ANILIST_JSON = { data: { Page: { media: [
+  { type: 'MANGA', format: 'MANGA', title: { native: '葬送のフリーレン', romaji: 'Sousou no Frieren' }, genres: ['Adventure', 'Sci-Fi', 'Unknown'], startDate: { year: 2020 }, coverImage: { large: 'https://s4.anilist.co/l.jpg', medium: 'https://s4.anilist.co/m.jpg' }, staff: { edges: [{ role: 'Art', node: { name: { native: 'アベツカサ' } } }, { role: 'Story', node: { name: { native: '山田鐘人' } } }] }, studios: { nodes: [] } },
+  { type: 'ANIME', format: 'TV', title: { native: '葬送のフリーレン' }, genres: ['Drama'], startDate: { year: 2023 }, coverImage: {}, staff: { edges: [] }, studios: { nodes: [{ name: 'MADHOUSE' }] } }
+] } } };
+
+function withFetch(handler, fn) {
+  const original = window.fetch;
+  window.fetch = async (url, options) => handler(String(url), options);
+  return Promise.resolve().then(fn).finally(() => { window.fetch = original; });
+}
+
+test('自動入力: 国会図書館の結果は、タイトルを含むものだけを、同じ本をまとめて並べる', () => {
+  const found = parseNdl(NDL_XML, '火車');
+  eq(found.map(x => [x.title, x.author, x.kind]), [['火車', '宮部みゆき', 'novel'], ['火車', '石倉久四郎', 'book'], ['帶我走吧!火車', '', 'book']]);
+  eq(found[0].tags, ['宮部みゆき']);
+});
+
+test('自動入力: AniList の結果から、種類・作者・ジャンルのタグを作る', () => {
+  const [manga, anime] = parseAniList(ANILIST_JSON);
+  eq([manga.kind, manga.author, manga.year, manga.tags], ['manga', '山田鐘人', 2020, ['山田鐘人', '冒険', 'SF']]);
+  eq([anime.kind, anime.author, anime.cover], ['anime', 'MADHOUSE', '']);
+});
+
+test('自動入力: 使っているジャンル名があれば、それを選ぶ', () => {
+  resetApp();
+  eq(pickGenre('manga'), '漫画');
+  setItems([make({ genre: 'マンガ' }), make({ genre: '小説' })]);
+  eq([pickGenre('manga'), pickGenre('lightnovel'), pickGenre('anime')], ['マンガ', '小説', 'アニメ']);
+});
+
+test('自動入力: 候補を選ぶと、タイトル・ジャンル・タグが入り、既存のタグは残る', async () => {
+  resetApp();
+  openEditor();
+  $('#title').value = 'フリーレン';
+  state.formTags = ['好き'];
+  await withFetch(url => url.startsWith(ANILIST)
+    ? new Response(JSON.stringify(ANILIST_JSON))
+    : url.startsWith(NDL) ? new Response('<rss><channel></channel></rss>') : Promise.reject(new Error('no image')), async () => {
+    await runWorkSearch();
+    const options = [...document.querySelectorAll('#work-results .work-result')];
+    eq(options.length, 2);
+    assert(!$('#work-results').hidden, 'results shown');
+    await applyWork(parseAniList(ANILIST_JSON)[0]);
+  });
+  eq([$('#title').value, $('#entryGenre').value, state.formTags], ['葬送のフリーレン', '漫画', ['好き', '山田鐘人', '冒険', 'SF']]);
+  assert($('#work-results').hidden && dirty, 'closed and dirty');
+  assert($('#work-status').textContent.includes('表紙画像は取得できませんでした'), 'cover failure reported');
+  $('#dialog').close();
+});
+
+test('自動入力: 自分で選んだ表紙は上書きしない', async () => {
+  resetApp();
+  openEditor();
+  state.cover = 'data:image/png;base64,AAAA';
+  let fetched = false;
+  await withFetch(() => { fetched = true; return new Response(''); }, () => applyWork(parseAniList(ANILIST_JSON)[0]));
+  eq([fetched, state.cover], [false, 'data:image/png;base64,AAAA']);
+  $('#dialog').close();
+});
+
+test('自動入力: 両方の検索に失敗したら、そう伝える', async () => {
+  resetApp();
+  openEditor();
+  $('#title').value = '火車';
+  await withFetch(() => Promise.reject(new TypeError('offline')), runWorkSearch);
+  assert($('#work-status').textContent.includes('検索できませんでした') && $('#work-results').hidden, 'error shown');
+  $('#dialog').close();
+});
+
+test('自動入力: CSP で、検索先と表紙の取得先だけを許可している', async () => {
+  const csp = (await indexHtml()).match(/Content-Security-Policy" content="([^"]+)"/)[1];
+  ['https://graphql.anilist.co', 'https://ndlsearch.ndl.go.jp', 'https://s4.anilist.co'].forEach(host => assert(csp.includes(host), host));
+});
