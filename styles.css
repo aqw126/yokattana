@@ -610,3 +610,19 @@ dialog footer {
 .tag-chip[aria-pressed="true"] { background:var(--sage); color:#fff; }
 .genre-field { display:grid; gap:10px; align-content:start; }
 .genre-chips { margin-top:0; }
+.multi { position:relative; border:1px solid var(--line); border-radius:9px; background:white; min-height:43px; min-width:0; }
+.multi summary { display:flex; align-items:center; justify-content:space-between; gap:6px; height:41px; padding:15px 10px 3px 11px; cursor:pointer; list-style:none; font-size:13px; }
+.multi summary::-webkit-details-marker { display:none; }
+.multi summary::after { content:"▾"; color:var(--muted); }
+.multi-value { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.multi[open] { border-color:var(--sage); }
+.multi-menu { position:absolute; top:calc(100% + 4px); left:0; min-width:100%; width:max-content; max-width:min(320px,calc(100vw - 32px)); background:white; border:1px solid var(--line); border-radius:10px; box-shadow:0 12px 30px #22342c26; z-index:5; }
+.multi-panel { max-height:240px; overflow:auto; padding:6px; }
+.multi-panel:empty::before { content:"まだありません"; display:block; padding:8px; color:var(--muted); font-size:12px; }
+.multi-panel label { border:0; min-height:0; background:transparent; display:flex; align-items:center; gap:8px; padding:8px; border-radius:7px; font-size:13px; cursor:pointer; }
+.multi-panel label:hover { background:var(--pale); }
+.multi-clear { width:100%; border:0; border-top:1px solid var(--line); background:transparent; padding:10px; font-size:12px; color:var(--sage); cursor:pointer; border-radius:0 0 10px 10px; }
+@media(max-width:720px) { .multi:last-of-type .multi-menu { left:auto; right:0; } }
+.multi-search { display:block; width:calc(100% - 12px); margin:6px; padding:8px 10px; border:1px solid var(--line); border-radius:7px; outline:0; font-size:13px; }
+.multi-search:focus { border-color:var(--sage); }
+.multi-panel label[hidden] { display:none; }

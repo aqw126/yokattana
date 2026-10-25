@@ -281,10 +281,35 @@ function genres() {
 function alltags() {
   return[...new Set(liveItems().flatMap(x=>x.tags))].sort((a,b)=>a.localeCompare(b,'ja'))
 }
-function choices(el,values) {
-  let old=el.value,label=el.options[0].text;
-  el.innerHTML=`<option value="">${label}</option>`+values.map(x=>`<option value="${e(x)}">${e(x)}</option>`).join('');
-  el.value=values.includes(old)?old:''
+const filters= { genre:new Set(),tag:new Set() },filterKeys= {};
+// 選択肢が多いときのために、入力した文字で一覧を絞る
+function applyOptionSearch(root) {
+  const q=root.querySelector('.multi-search').value.trim().toLocaleLowerCase('ja');
+  root.querySelectorAll('.multi-panel label').forEach(label=> { label.hidden=!!q&&!label.textContent.toLocaleLowerCase('ja').includes(q); });
+}
+// 複数選択のフィルター。選択肢が変わったときだけ作り直す（操作中のフォーカスを保つ）
+function renderFilter(kind,values) {
+  const root=$(`#${kind}-filter`),panel=root.querySelector('.multi-panel'),selected=filters[kind],key=values.join(' ');
+  [...selected].filter(v=>!values.includes(v)).forEach(v=>selected.delete(v));
+  if(filterKeys[kind]!==key) {
+    filterKeys[kind]=key;
+    panel.innerHTML='';
+    values.forEach(v=> {
+      const label=document.createElement('label'),box=document.createElement('input');
+      box.type='checkbox';
+      box.value=v;
+      box.onchange=()=> {
+        if(box.checked) selected.add(v);
+        else selected.delete(v);
+        render()
+      };
+      label.append(box,document.createTextNode(v));
+      panel.append(label)
+    })
+  }
+  panel.querySelectorAll('input').forEach(box=> { box.checked=selected.has(box.value); });
+  applyOptionSearch(root);
+  root.querySelector('.multi-value').textContent=selected.size?[...selected].join('、'):'すべて'
 }
 function date(v) {
   return new Intl.DateTimeFormat('ja-JP', {
@@ -292,15 +317,15 @@ function date(v) {
   }).format(new Date(v))
 }
 function visible() {
-  let q=$('#query').value.trim().toLocaleLowerCase('ja'),g=$('#genre').value,t=$('#tag').value,s=$('#sort').value,r=liveItems().filter(x=> {
+  let q=$('#query').value.trim().toLocaleLowerCase('ja'),g=filters.genre,t=filters.tag,s=$('#sort').value,r=liveItems().filter(x=> {
     let text=[x.title,x.genre,...x.tags,x.notes||''].join(' ').toLocaleLowerCase('ja');
-    return(!q||text.includes(q))&&(!g||x.genre===g)&&(!t||x.tags.includes(t))
+    return(!q||text.includes(q))&&(!g.size||g.has(x.genre))&&[...t].every(tag=>x.tags.includes(tag))
   });
   return r.sort((a,b)=>s==='old'?new Date(a.createdAt)-new Date(b.createdAt):s==='high'?b.rating-a.rating||new Date(b.createdAt)-new Date(a.createdAt):s==='low'?a.rating-b.rating||new Date(b.createdAt)-new Date(a.createdAt):s==='title'?a.title.localeCompare(b.title,'ja'):new Date(b.createdAt)-new Date(a.createdAt))
 }
 function render() {
-  choices($('#genre'),genres());
-  choices($('#tag'),alltags());
+  renderFilter('genre',genres());
+  renderFilter('tag',alltags());
   renderGenreChips();
   const live=liveItems();
   $('#count').textContent=live.length;
@@ -310,7 +335,7 @@ function render() {
   grid.innerHTML='';
   $('#empty').hidden=live.length>0;
   $('#notfound').hidden=live.length===0||list.length>0;
-  $('#heading').textContent=$('#query').value||$('#genre').value||$('#tag').value?`検索結果 (${list.length})`:`すべての記録 (${live.length})`;
+  $('#heading').textContent=$('#query').value||filters.genre.size||filters.tag.size?`検索結果 (${list.length})`:`すべての記録 (${live.length})`;
   let tpl=$('#card');
   list.forEach(x=> {
     let n=tpl.content.cloneNode(true),img=n.querySelector('img'),letter=n.querySelector('.art span');
@@ -507,7 +532,30 @@ $('#delete').onclick=()=> {
     render()
   }
 };
-['#query','#genre','#tag','#sort'].forEach(s=>$(s).addEventListener(s==='#query'?'input':'change',render));
+['#query','#sort'].forEach(s=>$(s).addEventListener(s==='#query'?'input':'change',render));
+document.querySelectorAll('.multi').forEach(root=> {
+  const search=root.querySelector('.multi-search');
+  search.addEventListener('input',()=>applyOptionSearch(root));
+  // Enter で、絞り込まれた先頭の選択肢を切り替える
+  search.addEventListener('keydown',event=> {
+    if(event.key!=='Enter') return;
+    event.preventDefault();
+    root.querySelector('.multi-panel label:not([hidden]) input')?.click()
+  });
+  root.addEventListener('toggle',()=> {
+    if(!root.open) { search.value=''; applyOptionSearch(root); return; }
+    search.focus()
+  })
+});
+document.querySelectorAll('.multi-clear').forEach(button=> {
+  button.onclick=()=> {
+    filters[button.closest('.multi').id.replace('-filter','')].clear();
+    render()
+  }
+});
+// 外側のクリックや Esc で、開いている選択肢を閉じる
+document.addEventListener('click',event=> document.querySelectorAll('.multi[open]').forEach(d=> { if(!d.contains(event.target)) d.open=false; }));
+document.addEventListener('keydown',event=> { if(event.key==='Escape') document.querySelectorAll('.multi[open]').forEach(d=> { d.open=false; }); });
 $('#export').onclick=()=>backup();
 $('#import').onclick=()=>$('#file').click();
 $('#file').onchange=x=> {
