@@ -144,3 +144,21 @@ test('テーマ: 自動→ライト→ダークと切り替わり、保存され
     applyTheme(currentTheme());
   }
 });
+
+test('a11y: 選択肢の一覧は、ライト・ダークのどちらでも文字と背景の色が分かれている', () => {
+  const root = document.documentElement, before = root.getAttribute('data-theme');
+  try {
+    for (const theme of ['light', 'dark']) {
+      root.setAttribute('data-theme', theme);
+      document.querySelectorAll('select').forEach(select => {
+        [select, ...select.options].forEach(el => {
+          const c = getComputedStyle(el);
+          assert(c.backgroundColor !== 'rgba(0, 0, 0, 0)' || el === select, `${theme}: ${select.id} option has a background`);
+          assert(c.color !== c.backgroundColor, `${theme}: ${select.id} text differs from background`);
+        });
+      });
+    }
+  } finally {
+    if (before === null) root.removeAttribute('data-theme'); else root.setAttribute('data-theme', before);
+  }
+});
