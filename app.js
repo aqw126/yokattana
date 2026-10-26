@@ -373,15 +373,22 @@ function genres() {
 function alltags() {
   return[...new Set(liveItems().flatMap(x=>x.tags))].sort((a,b)=>a.localeCompare(b,'ja'))
 }
-const filters= { genre:new Set(),tag:new Set() },filterKeys= {},selection=new Set();
+const filters= { genre:new Set(),tag:new Set(),rating:new Set() },filterKeys= {},selection=new Set();
+// 評価の絞り込みは、0.5刻みの4つの帯。評価は0.1刻みなので、10倍した整数で比べる（小数の誤差を避ける）
+const RATING_BANDS=[['4.5','★4.5〜5.0'],['4.0','★4.0〜4.4'],['3.5','★3.5〜3.9'],['3.0','★3.0〜3.4']],RATING_NAMES=Object.fromEntries(RATING_BANDS);
+function ratingBand(rating) {
+  const t=Math.round(Number(rating)*10);
+  return t>=45?'4.5':t>=40?'4.0':t>=35?'3.5':'3.0'
+}
 // 選択肢が多いときのために、入力した文字で一覧を絞る
 function applyOptionSearch(root) {
-  const q=root.querySelector('.multi-search').value.trim().toLocaleLowerCase('ja');
+  const q=(root.querySelector('.multi-search')?.value||'').trim().toLocaleLowerCase('ja');
   root.querySelectorAll('.multi-panel label').forEach(label=> { label.hidden=!!q&&!label.textContent.toLocaleLowerCase('ja').includes(q); });
 }
 // 複数選択のフィルター。選択肢が変わったときだけ作り直す（操作中のフォーカスを保つ）
-function renderFilter(kind,values) {
-  const root=$(`#${kind}-filter`),panel=root.querySelector('.multi-panel'),selected=filters[kind],key=values.join('\u0000');
+// display: 選択肢の表示（件数つきなど）。name: 選んだものを上に出すときの名前
+function renderFilter(kind,values,display=v=>v,name=display) {
+  const root=$(`#${kind}-filter`),panel=root.querySelector('.multi-panel'),selected=filters[kind],key=values.map(display).join('\u0000');
   [...selected].filter(v=>!values.includes(v)).forEach(v=>selected.delete(v));
   if(filterKeys[kind]!==key) {
     filterKeys[kind]=key;
@@ -395,13 +402,13 @@ function renderFilter(kind,values) {
         else selected.delete(v);
         render()
       };
-      label.append(box,document.createTextNode(v));
+      label.append(box,document.createTextNode(display(v)));
       panel.append(label)
     })
   }
   panel.querySelectorAll('input').forEach(box=> { box.checked=selected.has(box.value); });
   applyOptionSearch(root);
-  root.querySelector('.multi-value').textContent=selected.size?[...selected].join('、'):'すべて'
+  root.querySelector('.multi-value').textContent=selected.size?values.filter(v=>selected.has(v)).map(name).join('、'):'すべて'
 }
 function date(v) {
   return new Intl.DateTimeFormat('ja-JP', {
@@ -409,9 +416,9 @@ function date(v) {
   }).format(new Date(v))
 }
 function visible() {
-  let q=$('#query').value.trim().toLocaleLowerCase('ja'),g=filters.genre,t=filters.tag,s=$('#sort').value,r=liveItems().filter(x=> {
+  let q=$('#query').value.trim().toLocaleLowerCase('ja'),g=filters.genre,t=filters.tag,rt=filters.rating,s=$('#sort').value,r=liveItems().filter(x=> {
     let text=[x.title,x.genre,...x.tags,x.notes||'',x.quote||''].join(' ').toLocaleLowerCase('ja');
-    return(!q||text.includes(q))&&(!g.size||g.has(x.genre))&&[...t].every(tag=>x.tags.includes(tag))
+    return(!q||text.includes(q))&&(!g.size||g.has(x.genre))&&[...t].every(tag=>x.tags.includes(tag))&&(!rt.size||rt.has(ratingBand(x.rating)))
   });
   return r.sort((a,b)=>compareItems(s,a,b))
 }
@@ -441,13 +448,16 @@ function maskedSpoilers(text) {
 function render() {
   renderFilter('genre',genres());
   renderFilter('tag',alltags());
+  // 評価は、帯ごとの件数（絞り込む前の全体）を添える
+  const bandCounts=countBy(x=>[ratingBand(x.rating)]);
+  renderFilter('rating',RATING_BANDS.map(([v])=>v),v=>`${RATING_NAMES[v]}（${bandCounts.find(([k])=>k===v)?.[1]||0}件）`,v=>RATING_NAMES[v]);
   renderGenreChips();
   const live=liveItems();
   $('#count').textContent=live.length;
   $('#genres').textContent=genres().length;
   $('#average').textContent=live.length?(live.reduce((a,x)=>a+Number(x.rating),0)/live.length).toFixed(1):'—';
   let list=visible(),grid=$('#grid');
-  const view=JSON.stringify([$('#query').value,$('#sort').value,[...filters.genre],[...filters.tag]]);
+  const view=JSON.stringify([$('#query').value,$('#sort').value,[...filters.genre],[...filters.tag],[...filters.rating]]);
   if(view!==lastView) { lastView=view; shownLimit=CARD_PAGE; }
   grid.replaceChildren();
   $('#more').hidden=list.length<=shownLimit;
@@ -456,7 +466,7 @@ function render() {
   $('#open-trash').textContent=trashed?`ごみ箱 (${trashed})`:'ごみ箱';
   $('#empty').hidden=live.length>0;
   $('#notfound').hidden=live.length===0||list.length>0;
-  $('#heading').textContent=$('#query').value||filters.genre.size||filters.tag.size?`検索結果 (${list.length})`:`すべての記録 (${live.length})`;
+  $('#heading').textContent=$('#query').value||filters.genre.size||filters.tag.size||filters.rating.size?`検索結果 (${list.length})`:`すべての記録 (${live.length})`;
   let tpl=$('#card');
   grid.classList.toggle('picking',picking);
   [...selection].filter(id=>!live.some(x=>x.id===id)).forEach(id=>selection.delete(id));
@@ -1035,6 +1045,8 @@ $('#delete').onclick=()=> {
 ['#query','#sort'].forEach(s=>$(s).addEventListener(s==='#query'?'input':'change',render));
 document.querySelectorAll('.multi').forEach(root=> {
   const search=root.querySelector('.multi-search');
+  // 評価のように選択肢が少ないものには、探す欄がない
+  if(!search) return;
   search.addEventListener('input',()=>applyOptionSearch(root));
   // Enter で、絞り込まれた先頭の選択肢を切り替える
   search.addEventListener('keydown',event=> {
@@ -1508,6 +1520,7 @@ function criteriaText() {
   if(query) parts.push(`検索：${query}`);
   if(filters.genre.size) parts.push(`ジャンル：${[...filters.genre].join('、')}`);
   if(filters.tag.size) parts.push(`タグ：${[...filters.tag].join('、')}`);
+  if(filters.rating.size) parts.push(`評価：${RATING_BANDS.filter(([v])=>filters.rating.has(v)).map(([,n])=>n).join('、')}`);
   return parts.join(' / ')||'すべての記録'
 }
 function shareUrl(id) {

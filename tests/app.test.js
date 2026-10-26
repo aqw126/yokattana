@@ -18,6 +18,7 @@ function resetApp() {
   fakeCloud.reset();
   filters.genre.clear();
   filters.tag.clear();
+  filters.rating.clear();
   $('#query').value = '';
   $('#sort').value = 'new';
   state.items = [];
