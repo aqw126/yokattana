@@ -347,12 +347,12 @@ function liveItems() {
   return state.items.filter(x=>!x.deleted)
 }
 // 長辺600pxのJPEGに縮小する。細かい画像で COVER_LIMIT を超えるときは、さらに小さく・粗くする（クラウドは1件300KBまで）
-function scaleImage(src) {
+function scaleImage(src,steps=[[600,0.8],[600,0.6],[450,0.6],[300,0.5]],limit=COVER_LIMIT) {
   return new Promise((resolve,reject)=> {
     const img=new Image();
     img.onload=()=> {
       let url='';
-      for(const [size,quality] of [[600,0.8],[600,0.6],[450,0.6],[300,0.5]]) {
+      for(const [size,quality] of steps) {
         const scale=Math.min(1,size/Math.max(img.width,img.height)),c=document.createElement('canvas'),g=c.getContext('2d');
         c.width=Math.max(1,Math.round(img.width*scale));
         c.height=Math.max(1,Math.round(img.height*scale));
@@ -360,7 +360,7 @@ function scaleImage(src) {
         g.fillRect(0,0,c.width,c.height);
         g.drawImage(img,0,0,c.width,c.height);
         url=c.toDataURL('image/jpeg',quality);
-        if(url.length<=COVER_LIMIT) break
+        if(url.length<=limit) break
       }
       resolve(url)
     };
@@ -1760,6 +1760,24 @@ document.addEventListener('keydown',event=> { if(event.key==='Escape'&&picking&&
 
 // 共有リンク（その時点の内容を、読み取り専用のコピーとして公開する）
 const SHARE_LIMIT=100,SHARE_TOKEN=/^[A-Za-z0-9_-]{22,64}$/;
+// 共有に含める表紙は、小さな JPEG にする。共有は全体で1MBまでなので、表紙は合わせて800KBほどに収める
+const SHARE_COVER_BUDGET=800000,SHARE_COVER_MAX=24000,SHARE_COVER_STEPS=[[240,0.75],[200,0.7],[160,0.6],[120,0.5]];
+async function shareCover(cover,limit) {
+  if(!cover) return null;
+  try {
+    const src=typeof cover==='string'?cover:await loadCoverUrl(cover.hash);
+    if(!src) return null;
+    const url=await scaleImage(src,SHARE_COVER_STEPS,limit);
+    return url.length<=limit?url:null
+  }
+  catch { return null; }
+}
+async function addShareCovers(payload,items) {
+  const limit=Math.min(SHARE_COVER_MAX,Math.floor(SHARE_COVER_BUDGET/Math.max(1,items.length)));
+  const covers=await Promise.all(items.slice(0,SHARE_LIMIT).map(x=>shareCover(x.cover,limit)));
+  covers.forEach((url,i)=> { if(url) payload.items[i].cover=url; });
+  return payload
+}
 let shareDraft= { items:[],criteria:'' };
 function makeShareToken() {
   const bytes=crypto.getRandomValues(new Uint8Array(16));
@@ -1833,6 +1851,8 @@ function openShare(items,title,criteria) {
   $('#share-create').disabled=!currentUser;
   $('#share-summary').textContent=`共有する記録：${items.length}件（${criteria}）`+(items.length>SHARE_LIMIT?`。共有できるのは${SHARE_LIMIT}件までです。絞り込んでください。`:'');
   $('#share-result').hidden=true;
+  // 表紙は、毎回選んだときだけ含める
+  $('#share-covers').checked=false;
   $('#share-native').hidden=!navigator.share;
   $('#share-dialog').showModal();
   loadMyShares()
@@ -1843,17 +1863,24 @@ async function createShare() {
   if(!items.length) { alert('共有する記録がありません。'); return; }
   if(items.length>SHARE_LIMIT) { alert(`共有できるのは${SHARE_LIMIT}件までです。絞り込んでください。`); return; }
   const mode=document.querySelector('input[name=share-mode]:checked').value,days=Number($('#share-expiry').value);
-  const title=$('#share-title').value.trim()||'共有した記録';
+  const title=$('#share-title').value.trim()||'共有した記録',button=$('#share-create');
   const row= { id:makeShareToken(),user_id:currentUser.id,title:title.slice(0,100),item_count:items.length,payload:sharePayload(items,{ title,criteria:shareDraft.criteria,mode }),expires_at:days?new Date(Date.now()+days*86400000).toISOString():null };
+  button.disabled=true;
+  button.textContent='作成しています…';
   try {
+    if($('#share-covers').checked) await addShareCovers(row.payload,items);
     const { error }=await cloud.from('shares').insert(row);
     if(error) throw error
   }
   catch(error) {
     const message=String(error?.message||'');
+    button.disabled=false;
+    button.textContent='共有リンクを作る';
     alert(/too many/i.test(message)?'作成済みのリンクが多すぎます（50件まで）。不要なリンクを停止してください。':/shares|relation|schema cache|does not exist/i.test(message)?'共有機能がまだ有効になっていません。supabase-schema.sql の shares の部分を、Supabase で実行してください。':'共有リンクを作れませんでした。通信状況を確認して、もう一度お試しください。');
     return
   }
+  button.disabled=false;
+  button.textContent='共有リンクを作る';
   $('#share-url').value=shareUrl(row.id);
   $('#share-result').hidden=false;
   $('#share-url').select();
