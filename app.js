@@ -1903,7 +1903,7 @@ async function stopShare(row) {
   catch { alert('停止できませんでした。通信状況を確認して、もう一度お試しください。'); return; }
   loadMyShares()
 }
-$('#open-share').onclick=()=>openShare(visible(),criteriaText()==='すべての記録'?'私のよかった記録':criteriaText(),criteriaText());
+$('#open-share').onclick=()=>openShare(visible(),criteriaText()==='すべての記録'?'わたしの棚から':criteriaText(),criteriaText());
 $('#share-one').onclick=()=> {
   const item=state.items.find(x=>x.id===$('#id').value);
   if(!item||(dirty&&!confirm(DISCARD_MESSAGE))) return;
