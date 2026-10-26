@@ -447,7 +447,7 @@ test('自動入力: 両方の検索に失敗したら、そう伝える', async 
 
 test('自動入力: CSP で、検索先と表紙の取得先だけを許可している', async () => {
   const csp = (await indexHtml()).match(/Content-Security-Policy" content="([^"]+)"/)[1];
-  ['https://graphql.anilist.co', 'https://ndlsearch.ndl.go.jp', 'https://s4.anilist.co'].forEach(host => assert(csp.includes(host), host));
+  ['https://graphql.anilist.co', 'https://ndlsearch.ndl.go.jp', 'https://s4.anilist.co', 'https://www.wikidata.org', 'https://itunes.apple.com', 'https://*.mzstatic.com', 'https://api.themoviedb.org', 'https://image.tmdb.org'].forEach(host => assert(csp.includes(host), host));
 });
 
 // ---- セキュリティの強化 ----
@@ -484,4 +484,125 @@ test('Trusted Types: 許可した処理は、XML と sw.js だけを通す', () 
   try { trusted.createHTML('<img src=x onerror=alert(1)>'); } catch { blocked++; }
   try { trusted.createScriptURL('https://evil.example/x.js'); } catch { blocked++; }
   eq(blocked, 2);
+});
+
+// ---- 映画・ドラマ・ゲーム（Wikidata）と、本の表紙（Apple Books） ----
+const wdClaim = (prop, ...ids) => ({ [prop]: ids.map(id => ({ mainsnak: { datavalue: { value: { id } } } })) });
+const WD_ENTITIES = {
+  Q1: { id: 'Q1', labels: { ja: { value: 'ショーシャンクの空に' } }, claims: { ...wdClaim('P31', 'Q11424'), ...wdClaim('P57', 'Q10'), ...wdClaim('P136', 'Q20', 'Q21'), P577: [{ mainsnak: { datavalue: { value: { time: '+1994-09-10T00:00:00Z' } } } }] } },
+  Q2: { id: 'Q2', labels: { ja: { value: '半沢直樹' } }, claims: { ...wdClaim('P31', 'Q5398426'), ...wdClaim('P58', 'Q11'), ...wdClaim('P136', 'Q22') } },
+  Q3: { id: 'Q3', labels: { ja: { value: 'ゼルダの伝説 ブレス オブ ザ ワイルド' } }, claims: { ...wdClaim('P31', 'Q7889'), ...wdClaim('P178', 'Q12'), ...wdClaim('P57', 'Q10') } },
+  Q4: { id: 'Q4', labels: { ja: { value: '千と千尋の神隠し' } }, claims: wdClaim('P31', 'Q20650540', 'Q29168811') },
+  Q5: { id: 'Q5', labels: { ja: { value: '第2シーズン' } }, claims: wdClaim('P31', 'Q3464665') },
+  Q6: { id: 'Q6', labels: { en: { value: 'No Japanese' } }, claims: wdClaim('P31', 'Q11424') }
+};
+const WD_LABELS = { Q10: 'フランク・ダラボン', Q11: '八津, 弘幸', Q12: '任天堂', Q20: 'ドラマ映画', Q21: '刑務所映画', Q22: 'テレビドラマシリーズ' };
+
+test('Wikidata: 映画・ドラマ・ゲームを見分け、アニメ・シーズン・日本語名のないものは除く', () => {
+  const found = parseWikidata(WD_ENTITIES, WD_LABELS);
+  eq(found.map(x => [x.title, x.kind, x.author, x.year]), [
+    ['ショーシャンクの空に', 'movie', 'フランク・ダラボン', 1994],
+    ['半沢直樹', 'drama', '八津弘幸', null],
+    ['ゼルダの伝説 ブレス オブ ザ ワイルド', 'game', '任天堂', null]
+  ]);
+  eq(found[0].tags, ['フランク・ダラボン', 'ドラマ映画', '刑務所映画']);
+  eq(found[1].tags, ['八津弘幸']);
+  eq([pickGenre('movie'), pickGenre('drama'), pickGenre('game')], ['映画', 'ドラマ', 'ゲーム']);
+});
+
+test('本の表紙: 題名と作者が合う電子書籍だけを選び、大きな画像にする', () => {
+  const results = [
+    { trackName: '火車', artistName: '富蘭納瑞.歐康納', artworkUrl100: 'https://is1-ssl.mzstatic.com/a/100x100bb.jpg' },
+    { trackName: '火車（新潮文庫）', artistName: '宮部みゆき', artworkUrl100: 'https://is1-ssl.mzstatic.com/b/100x100bb.jpg' }
+  ];
+  eq(pickBookCover(results, { title: '火車', author: '宮部みゆき' }), 'https://is1-ssl.mzstatic.com/b/600x600bb.jpg');
+  eq(pickBookCover(results, { title: '火車', author: '石倉久四郎' }), '');
+  eq(pickBookCover(results, { title: '火車', author: '' }), 'https://is1-ssl.mzstatic.com/a/600x600bb.jpg');
+  eq(pickBookCover([], { title: '火車', author: '宮部みゆき' }), '');
+});
+
+test('本の表紙: 本の候補を選ぶと Apple Books で表紙を探し、なければ何もしない', async () => {
+  resetApp();
+  openEditor();
+  const urls = [];
+  await withFetch(url => {
+    urls.push(url);
+    return url.startsWith(ITUNES) ? new Response(JSON.stringify({ results: [] })) : Promise.reject(new Error('unexpected'));
+  }, () => applyWork({ source: 'ndl', kind: 'novel', title: '火車', author: '宮部みゆき', tags: [], cover: '' }));
+  eq(urls.length, 1);
+  assert(urls[0].includes('media=ebook') && urls[0].includes('country=jp'), urls[0]);
+  eq([state.cover, $('#work-status').textContent], [null, '「火車」の情報を入力しました。']);
+  $('#dialog').close();
+});
+
+test('Wikidata: 検索から候補を作るまで（名前は2回目の問い合わせでまとめて取る）', async () => {
+  const calls = [];
+  const found = await withFetch(url => {
+    const params = new URL(url).searchParams;
+    calls.push(params.get('action') + ':' + (params.get('props') || ''));
+    if (params.get('action') === 'wbsearchentities') return new Response(JSON.stringify({ search: [{ id: 'Q3' }, { id: 'Q1' }] }));
+    if (params.get('props') === 'labels|claims') return new Response(JSON.stringify({ entities: { Q1: WD_ENTITIES.Q1, Q3: WD_ENTITIES.Q3 } }));
+    return new Response(JSON.stringify({ entities: Object.fromEntries(Object.entries(WD_LABELS).map(([id, v]) => [id, { id, labels: { ja: { value: v } } }])) }));
+  }, () => searchWikidata('test'));
+  eq(calls, ['wbsearchentities:', 'wbgetentities:labels|claims', 'wbgetentities:labels']);
+  eq(found.map(x => x.title), ['ゼルダの伝説 ブレス オブ ザ ワイルド', 'ショーシャンクの空に']);
+});
+
+// ---- TMDB（キーがあるときだけ） ----
+const TMDB_JSON = { results: [
+  { media_type: 'movie', id: 278, title: 'ショーシャンクの空に', release_date: '1994-09-23', genre_ids: [18, 80], poster_path: '/p1.jpg', original_language: 'en' },
+  { media_type: 'tv', id: 61374, name: '半沢直樹', first_air_date: '2013-07-07', genre_ids: [18, 9648], poster_path: null, original_language: 'ja' },
+  { media_type: 'movie', id: 129, title: '千と千尋の神隠し', genre_ids: [16, 14], original_language: 'ja' },
+  { media_type: 'movie', id: 862, title: 'トイ・ストーリー', genre_ids: [16, 35], original_language: 'en' },
+  { media_type: 'person', id: 1, name: '誰か' }
+] };
+function withTmdbKey(key, fn) {
+  const original = window.TMDB_CONFIG;
+  window.TMDB_CONFIG = { apiKey: key };
+  return Promise.resolve().then(fn).finally(() => { window.TMDB_CONFIG = original; });
+}
+
+test('TMDB: 映画・ドラマだけを残し、日本のアニメ（AniList と重なる）と人物は除く', () => {
+  const found = parseTmdb(TMDB_JSON);
+  eq(found.map(x => [x.title, x.kind, x.year, x.tags]), [
+    ['ショーシャンクの空に', 'movie', 1994, ['ドラマ', '犯罪']],
+    ['半沢直樹', 'drama', 2013, ['ミステリー']],
+    ['トイ・ストーリー', 'movie', null, ['アニメーション', 'コメディ']]
+  ]);
+  eq([found[0].thumb, found[0].cover], ['https://image.tmdb.org/t/p/w92/p1.jpg', 'https://image.tmdb.org/t/p/w500/p1.jpg']);
+  eq([found[1].thumb, found[1].cover], ['', '']);
+});
+
+test('TMDB: 監督（映画）と制作者（ドラマ）を取り出す', () => {
+  eq(tmdbPeople({ credits: { crew: [{ job: 'Writer', name: 'X' }, { job: 'Director', name: 'Frank Darabont' }] } }), ['Frank Darabont']);
+  eq(tmdbPeople({ created_by: [{ name: '福澤, 克雄' }], credits: { crew: [{ job: 'Director', name: 'Y' }] } }), ['福澤克雄']);
+});
+
+test('TMDB: キーは32文字の英数字だけを使い、空ならクレジットも出さない', async () => {
+  await withTmdbKey('', () => eq(tmdbKey(), ''));
+  await withTmdbKey('ここにキー', () => eq(tmdbKey(), ''));
+  await withTmdbKey(' 0123456789abcdef0123456789ABCDEF ', () => eq(tmdbKey(), '0123456789abcdef0123456789ABCDEF'));
+  assert($('#tmdb-credit').hidden, 'no credit without a key');
+});
+
+test('TMDB: キーがあれば映画・ドラマは TMDB で探し、Wikidata はゲームだけにする', async () => {
+  resetApp();
+  openEditor();
+  $('#title').value = 'ショーシャンク';
+  const asked = [];
+  await withTmdbKey('0123456789abcdef0123456789abcdef', () => withFetch(url => {
+    asked.push(url.split('?')[0]);
+    if (url.startsWith(TMDB)) return new Response(JSON.stringify(TMDB_JSON));
+    if (url.startsWith(WIKIDATA)) {
+      const action = new URL(url).searchParams.get('action');
+      return new Response(JSON.stringify(action === 'wbsearchentities' ? { search: [{ id: 'Q1' }, { id: 'Q3' }] } : { entities: action && new URL(url).searchParams.get('props') === 'labels|claims' ? { Q1: WD_ENTITIES.Q1, Q3: WD_ENTITIES.Q3 } : {} }));
+    }
+    return Promise.reject(new Error('offline'));
+  }, runWorkSearch));
+  assert(asked.includes(`${TMDB}/search/multi`), 'TMDB searched');
+  const options = [...document.querySelectorAll('#work-results .work-result small')].map(x => x.textContent);
+  eq(options.filter(x => x.startsWith('ゲーム')).length, 1);
+  eq(options.filter(x => x.startsWith('映画')).length, 2);
+  assert(!options.some(x => x.includes('フランク・ダラボン')), 'no Wikidata movie when TMDB is on');
+  $('#dialog').close();
 });

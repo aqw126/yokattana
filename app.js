@@ -513,7 +513,27 @@ const ANILIST_GENRES= {
   Action:'アクション',Adventure:'冒険',Comedy:'コメディ',Drama:'ドラマ',Fantasy:'ファンタジー',Horror:'ホラー','Mahou Shoujo':'魔法少女',Mecha:'ロボット',Music:'音楽',Mystery:'ミステリー',Psychological:'心理',Romance:'恋愛','Sci-Fi':'SF','Slice of Life':'日常',Sports:'スポーツ',Supernatural:'超常',Thriller:'サスペンス'
 };
 // ジャンル名の候補。すでに使っている名前があれば、それを優先する
-const WORK_GENRES= { anime:['アニメ'],manga:['漫画','マンガ','コミック'],lightnovel:['ライトノベル','ラノベ','小説'],novel:['小説'],book:['本','書籍'] };
+const WORK_GENRES= { anime:['アニメ'],manga:['漫画','マンガ','コミック'],lightnovel:['ライトノベル','ラノベ','小説'],novel:['小説'],book:['本','書籍'],movie:['映画'],drama:['ドラマ','テレビドラマ'],game:['ゲーム'] };
+// 映画・ドラマ・ゲームは Wikidata で探す。種類（P31）で見分け、アニメは AniList と重なるので除く
+const WIKIDATA='https://www.wikidata.org/w/api.php';
+const WIKIDATA_KINDS= {
+  movie:['Q11424','Q24869','Q506240','Q93204','Q24862','Q29168811','Q202866','Q229390','Q17517379'],
+  drama:['Q5398426','Q1259759','Q526877'],
+  game:['Q7889','Q865493']
+};
+const WIKIDATA_ANIME=['Q20650540','Q63952888','Q1107'];
+// 映画・ドラマは、TMDB の API キー（tmdb-config.js）があれば TMDB で探す（ポスターつき）。そのときの Wikidata はゲームだけ
+const TMDB='https://api.themoviedb.org/3',TMDB_IMAGE='https://image.tmdb.org/t/p/';
+const TMDB_GENRES= {
+  28:'アクション',12:'冒険',16:'アニメーション',35:'コメディ',80:'犯罪',99:'ドキュメンタリー',18:'ドラマ',10751:'ファミリー',14:'ファンタジー',36:'歴史',27:'ホラー',10402:'音楽',9648:'ミステリー',10749:'恋愛',878:'SF',53:'サスペンス',10752:'戦争',37:'西部劇',
+  10759:'アクション',10762:'キッズ',10764:'リアリティ',10765:'SF',10766:'昼ドラ',10768:'戦争・政治'
+};
+function tmdbKey() {
+  const key=String(window.TMDB_CONFIG?.apiKey||'').trim();
+  return /^[0-9a-f]{32}$/i.test(key)?key:''
+}
+// 本の表紙は Apple Books の検索で探す（国立国会図書館サーチには表紙がないため）
+const ITUNES='https://itunes.apple.com/search';
 let workSearchId=0;
 function workKey(v) {
   return String(v||'').normalize('NFKC').replace(/[\s・:：\-－]/g,'').toLocaleLowerCase('ja')
@@ -563,12 +583,97 @@ async function searchAniList(query) {
   if(!r.ok) throw new Error(`AniList ${r.status}`);
   return parseAniList(await r.json())
 }
+function wikidataApi(params) {
+  return fetch(`${WIKIDATA}?${new URLSearchParams( { format:'json',origin:'*',...params })}`).then(r=> {
+    if(!r.ok) throw new Error(`Wikidata ${r.status}`);
+    return r.json()
+  })
+}
+function parseWikidata(entities,labels= {},kinds=Object.keys(WIKIDATA_KINDS)) {
+  const ids=(entity,prop)=>(entity.claims?.[prop]||[]).map(x=>x.mainsnak?.datavalue?.value?.id).filter(Boolean);
+  return Object.values(entities||{}).map(entity=> {
+    const types=ids(entity,'P31'),title=entity.labels?.ja?.value||'';
+    const kind=Object.keys(WIKIDATA_KINDS).find(k=>types.some(t=>WIKIDATA_KINDS[k].includes(t)));
+    if(!title||!kinds.includes(kind)||types.some(t=>WIKIDATA_ANIME.includes(t))) return null;
+    const time=(entity.claims?.P577||[]).map(x=>x.mainsnak?.datavalue?.value?.time).find(Boolean);
+    // 映画・ドラマは監督（なければ脚本）、ゲームは開発元
+    const people=kind==='game'?ids(entity,'P178'):ids(entity,'P57').length?ids(entity,'P57'):ids(entity,'P58');
+    const name=id=>labels[id]?personName(labels[id]):'';
+    const author=people.map(name).find(Boolean)||'';
+    // 「テレビドラマシリーズ」「ビデオゲーム」のような、種類を言い直しただけのジャンルは除く
+    const genreTags=ids(entity,'P136').map(name).filter(x=>x&&!/^(テレビ)?(ドラマ|映画|ビデオゲーム|ゲーム)(シリーズ)?$/.test(x)).slice(0,3);
+    return {
+      source:'wikidata',kind,title,author,year:time?Number(time.slice(1,5))||null:null,
+      tags:[...new Set([author,...genreTags].filter(Boolean))].slice(0,WORK_TAGS),thumb:'',cover:''
+    }
+  }).filter(Boolean)
+}
+async function searchWikidata(query,kinds) {
+  const found=await wikidataApi( { action:'wbsearchentities',search:query,language:'ja',uselang:'ja',type:'item',limit:'12' });
+  const ids=(found.search||[]).map(x=>x.id);
+  if(!ids.length) return[];
+  const { entities }=await wikidataApi( { action:'wbgetentities',ids:ids.join('|'),props:'labels|claims',languages:'ja' });
+  // 監督・開発元・ジャンルの名前を、まとめて日本語で取る
+  const refs=new Set();
+  Object.values(entities||{}).forEach(entity=>['P57','P58','P178','P136'].forEach(prop=>(entity.claims?.[prop]||[]).slice(0,3).forEach(x=> { const id=x.mainsnak?.datavalue?.value?.id; if(id) refs.add(id); })));
+  const labels= {};
+  if(refs.size) {
+    try {
+      const named=await wikidataApi( { action:'wbgetentities',ids:[...refs].slice(0,50).join('|'),props:'labels',languages:'ja' });
+      Object.values(named.entities||{}).forEach(x=> { if(x.labels?.ja) labels[x.id]=x.labels.ja.value; })
+    }
+    catch {}
+  }
+  // 検索の並び（関連の強い順）を保つ
+  const order=new Map(ids.map((id,i)=>[id,i]));
+  return parseWikidata(Object.fromEntries(Object.entries(entities||{}).sort((a,b)=>order.get(a[0])-order.get(b[0]))),labels,kinds).slice(0,6)
+}
+function parseTmdb(json) {
+  return(json?.results||[]).filter(r=>r.media_type==='movie'||r.media_type==='tv').filter(r=> {
+    // 日本のアニメは AniList と重なるので除く（海外のアニメーション映画は残す）
+    return!((r.genre_ids||[]).includes(16)&&r.original_language==='ja')
+  }).map(r=> {
+    const movie=r.media_type==='movie',date=(movie?r.release_date:r.first_air_date)||'';
+    // ドラマの「ドラマ」は種類の言い直しなので、タグにしない
+    const genreTags=[...new Set((r.genre_ids||[]).filter(id=>movie||id!==18).map(id=>TMDB_GENRES[id]).filter(Boolean))].slice(0,3);
+    return {
+      source:'tmdb',tmdb:`${r.media_type}/${r.id}`,kind:movie?'movie':'drama',title:String((movie?r.title:r.name)||'').trim(),author:'',year:Number(date.slice(0,4))||null,
+      tags:genreTags,thumb:r.poster_path?`${TMDB_IMAGE}w92${r.poster_path}`:'',cover:r.poster_path?`${TMDB_IMAGE}w500${r.poster_path}`:''
+    }
+  }).filter(x=>x.title).slice(0,8)
+}
+async function searchTmdb(query) {
+  const r=await fetch(`${TMDB}/search/multi?${new URLSearchParams( { query,language:'ja-JP',include_adult:'false',api_key:tmdbKey() })}`);
+  if(!r.ok) throw new Error(`TMDB ${r.status}`);
+  return parseTmdb(await r.json())
+}
+// 監督（映画）・制作者（ドラマ）は、選んだときに1回だけ問い合わせる
+function tmdbPeople(json) {
+  const names=json?.created_by?.length?json.created_by.map(x=>x.name):(json?.credits?.crew||[]).filter(x=>x.job==='Director').map(x=>x.name);
+  return[...new Set(names.map(personName).filter(Boolean))].slice(0,2)
+}
+async function fetchTmdbPeople(work) {
+  const r=await fetch(`${TMDB}/${work.tmdb}?${new URLSearchParams( { language:'ja-JP',append_to_response:'credits',api_key:tmdbKey() })}`);
+  if(!r.ok) throw new Error(`TMDB ${r.status}`);
+  return tmdbPeople(await r.json())
+}
+// 題名が同じ（巻数などの続きは可）で、作者も同じ電子書籍の表紙だけを使う。違う本の表紙を付けないため
+function pickBookCover(results,work) {
+  const title=workKey(work.title),author=workKey(work.author);
+  const hit=(results||[]).find(r=>r.artworkUrl100&&workKey(r.trackName).startsWith(title)&&(author?workKey(r.artistName).replace(/[,，]/g,'')===author.replace(/[,，]/g,''):workKey(r.trackName)===title));
+  return hit?hit.artworkUrl100.replace(/\/\d+x\d+bb\./,'/600x600bb.'):''
+}
+async function findBookCover(work) {
+  const r=await fetch(`${ITUNES}?${new URLSearchParams( { term:[work.title,work.author].filter(Boolean).join(' '),country:'jp',media:'ebook',limit:'10' })}`);
+  if(!r.ok) throw new Error(`iTunes ${r.status}`);
+  return pickBookCover((await r.json()).results,work)
+}
 async function searchNdl(query) {
   const r=await fetch(`${NDL}?${new URLSearchParams( { title:query,mediatype:'books',cnt:'100' })}`);
   if(!r.ok) throw new Error(`NDL ${r.status}`);
   return parseNdl(await r.text(),query)
 }
-const WORK_KIND_NAMES= { anime:'アニメ',manga:'漫画',lightnovel:'ライトノベル',novel:'小説',book:'本' };
+const WORK_KIND_NAMES= { anime:'アニメ',manga:'漫画',lightnovel:'ライトノベル',novel:'小説',book:'本',movie:'映画',drama:'ドラマ',game:'ゲーム' };
 function closeWorkResults(message='') {
   workSearchId++;
   $('#work-results').hidden=true;
@@ -607,7 +712,7 @@ async function runWorkSearch() {
     return
   }
   $('#work-status').textContent='検索しています…';
-  const searches=[searchAniList(query),searchNdl(query)];
+  const searches=tmdbKey()?[searchAniList(query),searchTmdb(query),searchWikidata(query,['game']),searchNdl(query)]:[searchAniList(query),searchWikidata(query),searchNdl(query)];
   let found=0,failed=0,left=searches.length;
   const status=()=> {
     if(left) return found?`${found}件の候補が見つかりました。ほかの候補も探しています…`:'検索しています…';
@@ -640,12 +745,21 @@ async function applyWork(work) {
   renderGenreChips();
   renderFormTags();
   closeWorkResults(`「${work.title}」の情報を入力しました。`);
-  // 自分で選んだ表紙は上書きしない
-  if(!work.cover||state.cover) return;
-  // 取得中に別の記録を開いたり、別の候補を選んだりしたら捨てる
   const token=workSearchId;
+  if(work.source==='tmdb') {
+    fetchTmdbPeople(work).then(people=> {
+      if(token!==workSearchId) return;
+      people.forEach(name=> { if(!state.formTags.includes(name)) state.formTags.push(name); });
+      renderFormTags()
+    }).catch(()=> {})
+  }
+  // 自分で選んだ表紙は上書きしない。本は、ここで表紙を探す
+  if(state.cover||!work.cover&&work.source!=='ndl') return;
+  // 取得中に別の記録を開いたり、別の候補を選んだりしたら捨てる（token で見分ける）
   try {
-    const cover=await fetchCover(work.cover);
+    const url=work.cover||await findBookCover(work);
+    if(!url) return;
+    const cover=await fetchCover(url);
     if(token===workSearchId&&!state.cover) {
       state.cover=cover;
       preview(cover)
@@ -747,6 +861,7 @@ $('#entryGenre').addEventListener('input',renderGenreChips);
 $('#rating').oninput=x=>$('#ratingValue').textContent=Number(x.target.value).toFixed(1);
 $('#add-tag').onclick=addFormTag;
 $('#work-search').onclick=runWorkSearch;
+$('#tmdb-credit').hidden=!tmdbKey();
 $('#tag-input').addEventListener('keydown', event=> {
   if(event.key==='Enter') {
     event.preventDefault();
