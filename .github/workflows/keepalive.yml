@@ -1,5 +1,5 @@
 # Supabase の無料プロジェクトは、一定期間アクセスがないと一時停止される。
-# 週に1回、公開キーで軽いリクエストを送って停止を防ぐ。
+# 週に1回、公開キーで軽いリクエストを送って停止を防ぐ。ついでに、期限切れの共有リンクを消す。
 name: keepalive
 on:
   schedule:
@@ -13,3 +13,9 @@ jobs:
           curl --fail --silent --show-error \
             -H "apikey: sb_publishable_x9MPHM1V8jQkkgIStYFWZQ_OEyy7iPc" \
             "https://ndiwvgsgpmipypcipcpo.supabase.co/rest/v1/library_items?select=id&limit=1"
+      # supabase-schema.sql の「共有リンクの整理」を実行する前は失敗するので、失敗しても止めない
+      - run: |
+          curl --silent --show-error -X POST \
+            -H "apikey: sb_publishable_x9MPHM1V8jQkkgIStYFWZQ_OEyy7iPc" \
+            -H "Content-Type: application/json" -d '{}' \
+            "https://ndiwvgsgpmipypcipcpo.supabase.co/rest/v1/rpc/purge_expired_shares" || true

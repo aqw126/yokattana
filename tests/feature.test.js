@@ -449,3 +449,39 @@ test('自動入力: CSP で、検索先と表紙の取得先だけを許可し�
   const csp = (await indexHtml()).match(/Content-Security-Policy" content="([^"]+)"/)[1];
   ['https://graphql.anilist.co', 'https://ndlsearch.ndl.go.jp', 'https://s4.anilist.co'].forEach(host => assert(csp.includes(host), host));
 });
+
+// ---- セキュリティの強化 ----
+test('Trusted Types: すべてのページの CSP で、HTML 文字列の差し込みを禁じている', async () => {
+  for (const page of ['index.html', 'share.html', 'privacy.html']) {
+    const csp = (await fetch('../' + page).then(r => r.text())).match(/Content-Security-Policy" content="([^"]+)"/)[1];
+    assert(csp.includes("require-trusted-types-for 'script'") && csp.includes('trusted-types yokattana'), page);
+  }
+});
+
+test('Trusted Types: app.js と share.js は innerHTML などを使わない', async () => {
+  for (const file of ['app.js', 'share.js', 'theme.js']) {
+    const code = await fetch('../' + file).then(r => r.text());
+    assert(!/\.(innerHTML|outerHTML)\s*=|insertAdjacentHTML|document\.write/.test(code), file);
+  }
+});
+
+test('埋め込み対策: iframe の中では中身を隠し、新しい画面で開くリンクだけを出す', async () => {
+  const frame = document.createElement('iframe');
+  frame.src = '../privacy.html';
+  document.body.append(frame);
+  try {
+    await new Promise(resolve => frame.onload = resolve);
+    const doc = frame.contentDocument;
+    const link = doc.querySelector('body > a');
+    eq([doc.body.children.length, link?.target, link?.textContent], [1, '_top', 'よかっ棚を新しい画面で開く']);
+    assert(!doc.querySelector('h1'), 'page content hidden');
+  } finally { frame.remove(); }
+});
+
+test('Trusted Types: 許可した処理は、XML と sw.js だけを通す', () => {
+  eq(trusted.createHTML('<?xml version="1.0"?><rss></rss>').toString(), '<?xml version="1.0"?><rss></rss>');
+  let blocked = 0;
+  try { trusted.createHTML('<img src=x onerror=alert(1)>'); } catch { blocked++; }
+  try { trusted.createScriptURL('https://evil.example/x.js'); } catch { blocked++; }
+  eq(blocked, 2);
+});

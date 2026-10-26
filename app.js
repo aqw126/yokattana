@@ -3,6 +3,12 @@ const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const COVER=/^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+$/;
 const TRASH_DAYS=30,CARD_PAGE=24,TOMBSTONE_DAYS=90,SYNC_CHUNK=20,PAGE_SIZE=100,COVER_LIMIT=150000;
 const cloud=window.supabase?.createClient(window.SUPABASE_CONFIG?.url,window.SUPABASE_CONFIG?.publishableKey);
+// CSP の Trusted Types で、HTML 文字列やスクリプトの URL を渡す処理は禁止している。例外はこの2つだけ:
+// 国立国会図書館サーチの XML を読むこと（DOMParser の文書ではスクリプトは動かない）と、Service Worker の登録
+const trusted=window.trustedTypes?.createPolicy('yokattana', {
+  createHTML:xml=> { if(!/^\s*(<\?xml|<rss)/.test(xml)) throw new TypeError('XML ではありません'); return xml; },
+  createScriptURL:url=> { if(url!=='sw.js') throw new TypeError(url); return url; }
+})||{ createHTML:x=>x,createScriptURL:x=>x };
 let shownLimit=CARD_PAGE,lastView='',picking=false,currentUser=null,flushing=false,shrinking=false,dirty=false,limitWarned=false;
 
 // 旧名称で保存されたデータを引き継ぐ
@@ -318,12 +324,6 @@ async function shrinkExistingCovers() {
   }
   finally { shrinking=false; }
 }
-function e(v='') {
-  return String(v).replace(/[&<>'"]/g,c=>( {
-    '&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'
-  }
-  [c]))
-}
 function genres() {
   return[...new Set(liveItems().map(x=>x.genre))].sort((a,b)=>a.localeCompare(b,'ja'))
 }
@@ -342,7 +342,7 @@ function renderFilter(kind,values) {
   [...selected].filter(v=>!values.includes(v)).forEach(v=>selected.delete(v));
   if(filterKeys[kind]!==key) {
     filterKeys[kind]=key;
-    panel.innerHTML='';
+    panel.replaceChildren();
     values.forEach(v=> {
       const label=document.createElement('label'),box=document.createElement('input');
       box.type='checkbox';
@@ -396,7 +396,7 @@ function render() {
   let list=visible(),grid=$('#grid');
   const view=JSON.stringify([$('#query').value,$('#sort').value,[...filters.genre],[...filters.tag]]);
   if(view!==lastView) { lastView=view; shownLimit=CARD_PAGE; }
-  grid.innerHTML='';
+  grid.replaceChildren();
   $('#more').hidden=list.length<=shownLimit;
   $('#more').textContent=`さらに表示（残り${list.length-shownLimit}件）`;
   const trashed=trashItems().length;
@@ -421,7 +421,11 @@ function render() {
     n.querySelector('.meta b').textContent=x.genre;
     n.querySelector('.meta strong').textContent='★ '+Number(x.rating).toFixed(1);
     n.querySelector('h3').textContent=x.title;
-    n.querySelector('.tags').innerHTML=x.tags.slice(0,4).map(t=>`<span>${e(t)}</span>`).join('')+(x.tags.length>4?`<span>+${x.tags.length-4}</span>`:'');
+    n.querySelector('.tags').replaceChildren(...[...x.tags.slice(0,4),...(x.tags.length>4?[`+${x.tags.length-4}`]:[])].map(t=> {
+      const span=document.createElement('span');
+      span.textContent=t;
+      return span
+    }));
     let p=n.querySelector('.cardbody p');
     p.textContent=x.notes||'';
     p.hidden=!x.notes;
@@ -460,7 +464,7 @@ function preview(v) {
 }
 function renderGenreChips() {
   const box=$('#genre-chips'),current=$('#entryGenre').value.trim();
-  box.innerHTML='';
+  box.replaceChildren();
   genres().forEach(name=> {
     const chip=document.createElement('button');
     chip.type='button';
@@ -478,7 +482,7 @@ function renderGenreChips() {
 }
 function renderFormTags() {
   const container=$('#tag-chips');
-  container.innerHTML='';
+  container.replaceChildren();
   state.formTags.forEach((tag,index)=> {
     const chip=document.createElement('button');
     chip.type='button';
@@ -537,7 +541,7 @@ function parseAniList(json) {
   }).filter(x=>x.title)
 }
 function parseNdl(xml,query) {
-  const doc=new DOMParser().parseFromString(xml,'application/xml'),q=workKey(query),groups=new Map();
+  const doc=new DOMParser().parseFromString(trusted.createHTML(xml),'application/xml'),q=workKey(query),groups=new Map();
   const text=(item,name)=>[...item.getElementsByTagName(name)].map(x=>x.textContent.trim()).filter(Boolean);
   for(const item of doc.getElementsByTagName('item')) {
     const title=text(item,'dc:title')[0]||'',key=workKey(title);
@@ -568,7 +572,7 @@ const WORK_KIND_NAMES= { anime:'アニメ',manga:'漫画',lightnovel:'ライト�
 function closeWorkResults(message='') {
   workSearchId++;
   $('#work-results').hidden=true;
-  $('#work-results').innerHTML='';
+  $('#work-results').replaceChildren();
   $('#work-status').textContent=message
 }
 function workOption(work) {
@@ -995,7 +999,7 @@ function applyTrash(items,change) {
 }
 function renderTrash() {
   const list=$('#trash-list'),items=trashItems();
-  list.innerHTML='';
+  list.replaceChildren();
   $('#empty-trash').hidden=!items.length;
   if(!items.length) {
     const li=document.createElement('li');
@@ -1053,7 +1057,7 @@ function renderManage() {
   fillManage($('#manage-tags'),countBy(x=>x.tags).sort((a,b)=>a[0].localeCompare(b[0],'ja')),'tag')
 }
 function fillManage(list,rows,kind) {
-  list.innerHTML='';
+  list.replaceChildren();
   if(!rows.length) {
     const li=document.createElement('li');
     li.className='manage-empty';
@@ -1124,7 +1128,7 @@ $('#close-manage').onclick=()=>$('#manage-dialog').close();
 
 // 振り返り
 function drawBars(box,rows) {
-  box.innerHTML='';
+  box.replaceChildren();
   if(!rows.length) {
     const empty=document.createElement('p');
     empty.className='manage-empty';
@@ -1153,7 +1157,7 @@ function drawReview() {
   const average=items.length?(items.reduce((a,x)=>a+x.rating,0)/items.length).toFixed(1):'—';
   const top=items.filter(x=>x.rating>=4.5).sort((a,b)=>b.rating-a.rating||basisDay(b).localeCompare(basisDay(a)));
   const summary=$('#review-summary');
-  summary.innerHTML='';
+  summary.replaceChildren();
   [['記録',items.length],['平均評価',average],['特によかった',top.length]].forEach(([label,value])=> {
     const card=document.createElement('div'),strong=document.createElement('strong'),span=document.createElement('span');
     strong.textContent=value;
@@ -1174,7 +1178,7 @@ function drawReview() {
   drawBars($('#review-genres'),ranked(countBy(x=>[x.genre],items)));
   drawBars($('#review-tags'),ranked(countBy(x=>x.tags,items)));
   const list=$('#review-top');
-  list.innerHTML='';
+  list.replaceChildren();
   if(!top.length) {
     const li=document.createElement('li');
     li.className='manage-empty';
@@ -1191,7 +1195,7 @@ function drawReview() {
 }
 function openReview() {
   const years=[...new Set(liveItems().map(x=>basisDay(x).slice(0,4)))].sort().reverse(),select=$('#review-year');
-  select.innerHTML='<option value="all">すべての期間</option>';
+  select.replaceChildren(new Option('すべての期間','all'));
   years.forEach(y=> {
     const option=document.createElement('option');
     option.value=y;
@@ -1341,7 +1345,7 @@ async function createShare() {
 }
 async function loadMyShares() {
   const list=$('#share-list');
-  list.innerHTML='';
+  list.replaceChildren();
   const note=text=> {
     const li=document.createElement('li');
     li.className='manage-empty';
@@ -1397,7 +1401,7 @@ $('#close-share').onclick=()=>$('#share-dialog').close();
 
 // オフラインでも開けるように、Service Worker を登録する（https のときだけ）
 if('serviceWorker' in navigator&&location.protocol==='https:') {
-  window.addEventListener('load',()=> { navigator.serviceWorker.register('sw.js').catch(()=> {}); });
+  window.addEventListener('load',()=> { navigator.serviceWorker.register(trusted.createScriptURL('sw.js')).catch(()=> {}); });
 }
 
 // 別のタブでの変更を取り込む（編集中は触らない）
