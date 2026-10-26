@@ -21,11 +21,18 @@
           document.getElementById('app-root').innerHTML = doc.body.innerHTML;
           window.SUPABASE_CONFIG = { url: 'http://fake.invalid', publishableKey: 'fake' };
           window.supabase = { createClient: () => window.fakeCloud };
+          // テスト用の保存先（本物の「yokattana」には触れない）。毎回まっさらにする
+          window.YOKATTANA_DB = 'yokattana-test';
+          await new Promise(resolve => { const r = indexedDB.deleteDatabase('yokattana-test'); r.onsuccess = r.onerror = r.onblocked = resolve; });
+          localStorage.clear();
+          await loadScript('../store.js');
           await loadScript('../app.js');
+          await window.appReady;
           await loadScript('../share.js');
           await loadScript('app.test.js');
           await loadScript('feature.test.js');
           await loadScript('a11y.test.js');
+          await loadScript('storage.test.js');
           await runAll();
         } catch (error) {
           finish(0, 1, ['ERROR ' + (error && error.stack || error)]);

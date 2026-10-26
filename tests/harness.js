@@ -30,6 +30,8 @@ function finish(pass, fail, lines) {
   document.body.dataset.summary = summary;
   document.body.dataset.failed = String(fail);
   document.title = summary;
+  // tests/run.py から開いたときは、結果を送り返す（ふつうに開いたときは、送れなくても気にしない）
+  fetch('/__results', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ summary, failed: fail, text: document.getElementById('results').textContent }) }).catch(() => {});
 }
 
 async function runAll() {

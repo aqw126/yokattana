@@ -3,12 +3,14 @@
     python tests/run.py
 
 Chrome (または Chromium / Edge) が必要。環境変数 CHROME で実行ファイルを指定できる。
+
+テストのページは、終わると結果を /__results に送る。ここではそれを（実際の時間で）待つ。
+IndexedDB などの本物の読み書きを待てるように、Chrome の仮想時間（--virtual-time-budget）は使わない。
 """
 import functools
-import html
 import http.server
+import json
 import os
-import re
 import shutil
 import subprocess
 import sys
@@ -41,47 +43,62 @@ class QuietHandler(http.server.SimpleHTTPRequestHandler):
     def log_message(self, *args):
         pass
 
+    def do_POST(self):
+        if self.path != "/__results":
+            self.send_error(404)
+            return
+        body = self.rfile.read(int(self.headers.get("Content-Length", 0)))
+        self.send_response(204)
+        self.end_headers()
+        self.server.results = json.loads(body.decode("utf-8"))
+        self.server.done.set()
+
 
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
     handler = functools.partial(QuietHandler, directory=str(ROOT))
     server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    server.done = threading.Event()
+    server.results = None
     port = server.server_address[1]
     threading.Thread(target=server.serve_forever, daemon=True).start()
 
     profile = tempfile.mkdtemp(prefix="yokattana-test-")
+    browser = subprocess.Popen(
+        [
+            find_browser(),
+            "--headless=new",
+            "--disable-gpu",
+            "--no-sandbox",
+            "--no-first-run",
+            f"--user-data-dir={profile}",
+            f"http://127.0.0.1:{port}/tests/index.html",
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
     try:
-        result = subprocess.run(
-            [
-                find_browser(),
-                "--headless=new",
-                "--disable-gpu",
-                "--no-sandbox",
-                "--no-first-run",
-                f"--user-data-dir={profile}",
-                "--virtual-time-budget=60000",
-                "--dump-dom",
-                f"http://127.0.0.1:{port}/tests/index.html",
-            ],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            timeout=180,
-        )
+        finished = server.done.wait(timeout=180)
     finally:
+        browser.terminate()
+        try:
+            _, stderr = browser.communicate(timeout=20)
+        except subprocess.TimeoutExpired:
+            browser.kill()
+            _, stderr = browser.communicate()
         server.shutdown()
         shutil.rmtree(profile, ignore_errors=True)
 
-    dom = result.stdout
-    results = re.search(r'<pre id="results">(.*?)</pre>', dom, re.S)
-    summary = re.search(r'data-summary="([^"]*)"', dom)
-    failed = re.search(r'data-failed="(\d+)"', dom)
-    if not results or not summary or not failed:
-        print("テストの結果を取得できませんでした。")
-        print(result.stderr[-2000:])
+    results = server.results
+    if not finished or not results:
+        print("テストの結果を取得できませんでした（3分以内に終わりませんでした）。")
+        print((stderr or "")[-2000:])
         sys.exit(2)
-    print(html.unescape(results.group(1)))
-    sys.exit(1 if int(failed.group(1)) else 0)
+    print(results["text"])
+    sys.exit(1 if int(results["failed"]) else 0)
 
 
 if __name__ == "__main__":

@@ -31,8 +31,7 @@ function resetApp() {
 }
 
 function setItems(items) {
-  state.items = items;
-  save();
+  commit(items, true);
   render();
 }
 
@@ -138,14 +137,34 @@ test('一覧: カードに作品名入りの読み上げ名が付く', () => {
 });
 
 // ---- 保存 ----
-test('commit: 保存に失敗したら元に戻し、falseを返す', () => {
+test('commit: IndexedDB に書けなかったら知らせ、次の保存で全件を書き直す', async () => {
+  resetApp();
+  await whenSaved();
+  const keep = make({ title: 'keep' });
+  setItems([keep]);
+  await whenSaved();
+  const original = LocalStore.writeItems;
+  LocalStore.writeItems = () => Promise.reject(new DOMException('full', 'QuotaExceededError'));
+  try { commit([keep, make({ title: 'new' })]); await whenSaved(); }
+  finally { LocalStore.writeItems = original; }
+  assert(alerts.length === 1 && alerts[0].includes('保存できませんでした'), 'user must be told');
+  // 次の保存では、書けなかった記録も含めて全件を書く
+  commit([...state.items, make({ title: 'third' })], true);
+  await whenSaved();
+  eq((await LocalStore.loadItems()).map(x => x.title).sort(), ['keep', 'new', 'third']);
+});
+
+test('commit: IndexedDB を使えないとき（以前の方式）は、失敗したら元に戻し、falseを返す', () => {
+  resetApp();
+  const mode = storeMode;
+  storeMode = 'legacy';
   const before = [make({ title: 'keep' })];
   state.items = before;
   const original = Storage.prototype.setItem;
   Storage.prototype.setItem = () => { throw new DOMException('full', 'QuotaExceededError'); };
   let result;
   try { result = commit([...before, make({ title: 'new' })]); }
-  finally { Storage.prototype.setItem = original; }
+  finally { Storage.prototype.setItem = original; storeMode = mode; }
   eq(result, false);
   eq(state.items.map(x => x.title), ['keep']);
   assert(alerts.length === 1, 'user must be told');
@@ -256,10 +275,10 @@ test('タグの名前変更と削除', () => {
 });
 
 // ---- 読み込み（JSON） ----
-test('JSON読み込み: 壊れた記録を整え、既存の記録はごみ箱へ移す', () => {
+test('JSON読み込み: 壊れた記録を整え、既存の記録はごみ箱へ移す', async () => {
   const existing = make({ title: '既存' });
   setItems([existing]);
-  importJson(JSON.stringify({ items: [{ title: '新しい', rating: 9, tags: null, cover: 'bad" onerror="x' }, { title: '' }] }));
+  await importJson(JSON.stringify({ items: [{ title: '新しい', rating: 9, tags: null, cover: 'bad" onerror="x' }, { title: '' }] }));
   eq(liveItems().map(x => [x.title, x.rating, x.tags, x.cover]), [['新しい', 5, [], null]]);
   eq(trashItems().map(x => x.title), ['既存']);
 });

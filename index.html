@@ -16,7 +16,7 @@
     <link rel="icon" href="icon.svg" type="image/svg+xml">
     <script src="theme.js"></script>
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="styles.css?v=202610262056">
+    <link rel="stylesheet" href="styles.css?v=202610262117">
   </head>
   <body>
     <a class="skip-link" href="#top">本文へ移動</a>
@@ -163,7 +163,7 @@
           </button>
         </div>
       </section>
-      <section class="empty" id="empty">
+      <section class="empty" id="empty" hidden>
         <i>
           ☷
         </i>
@@ -399,6 +399,7 @@
           </div>
           <button class="x" id="close-data" type="button" aria-label="閉じる">×</button>
         </section>
+        <p class="manage-note" id="storage-usage" aria-live="polite"></p>
         <h3 class="manage-title">書き出し</h3>
         <p class="manage-note">JSONは、このアプリに戻せるバックアップです。CSVは、表計算ソフトで開ける一覧です（表紙画像は含みません）。</p>
         <div class="data-actions">
@@ -502,9 +503,10 @@
       </article>
     </template>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js" integrity="sha384-TcHRA3zBbn+Lexh5n+Oil4guNPOS3rjNDpGRAN46u/s/mB2IZ50ceC6TYDU2yvgK" crossorigin="anonymous"></script>
-    <script src="supabase-config.js?v=202610262056"></script>
-    <script src="tmdb-config.js?v=202610262056"></script>
-    <script src="app.js?v=202610262056"></script>
+    <script src="supabase-config.js?v=202610262117"></script>
+    <script src="tmdb-config.js?v=202610262117"></script>
+    <script src="store.js?v=202610262117"></script>
+    <script src="app.js?v=202610262117"></script>
   </body>
 </html>
 

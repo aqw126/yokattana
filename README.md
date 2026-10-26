@@ -25,20 +25,22 @@
 - `index.html`: 画面構造（CSP、外部スクリプトの固定とSRI、アセットのバージョン印）
 - `styles.css`: 色・レイアウト・スマートフォン向け表示
 - `app.js`: 登録、検索、並べ替え、バックアップ、同期
+- `store.js`: この端末の保存先（IndexedDB）。記録・表紙・設定を分けて持つ
 - `supabase-config.js` / `supabase-schema.sql`: Supabase の接続先とテーブル・RLS
 - `tmdb-config.js` / `tmdb-logo.svg`: TMDB の API キー（空なら使わない）と、クレジット用のロゴ
 - `manifest.webmanifest` / `icon.svg`: ホーム画面への追加用
 - `sw.js`: オフライン対応（ネットワーク優先で、つながらないときだけ保存済みの内容を使う）。`tools/bump-version.py` がバージョンを更新します
 - `theme.js`: 表示テーマ（自動・ライト・ダーク）を、描画前に反映します。他のサイトの中（iframe）では中身を隠します
 - `share.html` / `share.js`: 共有リンクの閲覧ページ（読み取り専用）
-- `tests/`: ブラウザで動く自動テスト。`python tests/run.py` で、ヘッドレス Chrome を使って実行します（`tests/index.html` を、ローカルサーバー経由で開いても確認できます）。アクセシビリティの確認も含みます
+- `tests/`: ブラウザで動く自動テスト。`python tests/run.py` で、ヘッドレス Chrome を使って実行します（`tests/index.html` を、ローカルサーバー経由で開いても確認できます）。アクセシビリティの確認も含みますテストのページは、終わると結果を `run.py` に送り返します（IndexedDB の読み書きを実際の時間で待つため）。
 - `.github/workflows/test.yml`: プッシュと PR のたびに、上のテストを自動で実行します
 - `tools/bump-version.py`: `styles.css` / `app.js` などを変更したら実行して、キャッシュ回避用の `?v=` を更新します
 - `.github/workflows/keepalive.yml`: Supabase 無料枠の自動停止を防ぐ、週1回のアクセス
 
 ## データの扱い
 
-- 記録はブラウザのローカルストレージに保存され、ログイン中は Supabase にも同期されます。
+- 記録はブラウザ内の IndexedDB に保存され（表紙は画像のまま、記録とは別に保存）、ログイン中は Supabase にも同期されます。以前の版で localStorage に保存していた記録は、最初に開いたときに自動で移し、移す前のデータは30日間、控えとして残します。IndexedDB を使えないブラウザでは、以前の方式（localStorage、約5MB）で保存します。
+- 「データの管理」に、この端末の使用量（記録・表紙の数と容量）が出ます。
 - 削除した記録は「ごみ箱」に30日間残り、その後は中身を消した「削除済み」の印だけを90日間残して、他の端末へ削除を伝えます。
 - 「データの管理」から、JSON/CSVの書き出し、JSON/CSVの読み込み、アカウントの削除ができます。アカウントの削除には、`supabase-schema.sql` の `delete_my_account` を Supabase で一度実行しておく必要があります。
 - 同期に失敗した記録は「同期待ち」として保持し、オンライン復帰時や1分ごとに再送します。
