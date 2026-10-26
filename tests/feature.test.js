@@ -521,7 +521,7 @@ test('本の表紙: 題名と作者が合う電子書籍だけを選び、大き
   eq(pickBookCover([], { title: '火車', author: '宮部みゆき' }), '');
 });
 
-test('本の表紙: 本の候補を選ぶと Apple Books で表紙を探し、なければ何もしない', async () => {
+test('本の表紙: 本の候補を選ぶと Apple Books で表紙を探し、なければそう伝える', async () => {
   resetApp();
   openEditor();
   const urls = [];
@@ -531,7 +531,7 @@ test('本の表紙: 本の候補を選ぶと Apple Books で表紙を探し、�
   }, () => applyWork({ source: 'ndl', kind: 'novel', title: '火車', author: '宮部みゆき', tags: [], cover: '' }));
   eq(urls.length, 1);
   assert(urls[0].includes('media=ebook') && urls[0].includes('country=jp'), urls[0]);
-  eq([state.cover, $('#work-status').textContent], [null, '「火車」の情報を入力しました。']);
+  eq([state.cover, $('#work-status').textContent], [null, '「火車」の情報を入力しました（表紙画像は見つかりませんでした）。']);
   $('#dialog').close();
 });
 
@@ -605,4 +605,71 @@ test('TMDB: キーがあれば映画・ドラマは TMDB で探し、Wikidata �
   eq(options.filter(x => x.startsWith('映画')).length, 2);
   assert(!options.some(x => x.includes('フランク・ダラボン')), 'no Wikidata movie when TMDB is on');
   $('#dialog').close();
+});
+
+// ---- 本の表紙の改善（複数の作者・巻数・Apple Books の候補） ----
+const apple = (trackName, artistName, genres, extra = {}) => ({ trackName, artistName, genres, artworkUrl100: `https://is1-ssl.mzstatic.com/${encodeURIComponent(trackName)}/100x100bb.jpg`, releaseDate: '2020-01-01T00:00:00Z', ...extra });
+
+test('本の表紙: 作者が複数の電子書籍（漫画など）も、作者の1人が合えば選ぶ', () => {
+  eq(bookAuthors('渡真仁, 三嶋くろね & 暁なつめ'), ['渡真仁', '三嶋くろね', '暁なつめ']);
+  const results = [apple('葬送のフリーレン(15)', '山田鐘人 & アベツカサ', []), apple('葬送のフリーレン(1)', '山田鐘人 & アベツカサ', [])];
+  eq(pickBookCover(results, { title: '葬送のフリーレン', author: '山田鐘人' }), bookCoverUrl(results[1]));
+});
+
+test('本の表紙: 題名が同じものを先に、続きものは1巻を選ぶ。「1Q84」の数字は巻数にしない', () => {
+  eq(bookVolume('葬送のフリーレン(15)'), { base: '葬送のフリーレン', volume: 15 });
+  eq(bookVolume('ONE PIECE モノクロ版 115'), { base: 'ONE PIECE モノクロ版', volume: 115 });
+  eq(bookVolume('ブルーピリオド（１２）'), { base: 'ブルーピリオド', volume: 12 });
+  eq(bookVolume('1Q84'), { base: '1Q84', volume: 0 });
+  const results = [apple('ONE PIECE モノクロ版 115', '尾田栄一郎', []), apple('ONE PIECE カラー版 1', '尾田栄一郎', []), apple('ONE PIECE', '尾田栄一郎', [])];
+  eq(pickBookCover(results, { title: 'ONE PIECE', author: '尾田栄一郎' }), bookCoverUrl(results[2]));
+  eq(pickBookCover(results.slice(0, 2), { title: 'ONE PIECE', author: '尾田栄一郎' }), bookCoverUrl(results[1]));
+});
+
+test('Apple Books: 巻ごとの結果を1作品にまとめ、種類を見分け、成人向けは除く', () => {
+  const found = parseAppleBooks({ results: [
+    apple('葬送のフリーレン(15)', '山田鐘人 & アベツカサ', ['ファンタジー', 'マンガ／グラフィックノベル'], { releaseDate: '2025-01-01T00:00:00Z' }),
+    apple('葬送のフリーレン(1)', '山田鐘人 & アベツカサ', ['少年', 'マンガ／グラフィックノベル'], { releaseDate: '2020-08-18T00:00:00Z' }),
+    apple('火花', '又吉直樹', ['小説／文学', 'ブック']),
+    apple('ソードアート・オンライン1 アインクラッド', '川原礫 & abec', ['ライトノベル', '小説／文学']),
+    apple('火花の夜に', '誰か', ['アダルト', '小説／文学']),
+    apple('写真集', '誰か', ['アート'])
+  ] });
+  eq(found.map(x => [x.title, x.kind, x.author, x.year]), [
+    ['葬送のフリーレン', 'manga', '山田鐘人', 2020],
+    ['火花', 'novel', '又吉直樹', 2020],
+    ['ソードアート・オンライン1 アインクラッド', 'lightnovel', '川原礫', 2020],
+    ['写真集', 'book', '誰か', 2020]
+  ]);
+  eq(found[0].cover, 'https://is1-ssl.mzstatic.com/' + encodeURIComponent('葬送のフリーレン(1)') + '/600x600bb.jpg');
+  eq(found[0].tags, ['山田鐘人', 'アベツカサ']);
+});
+
+test('作品の検索: 同じ作品が別の検索先からも届いたら、1つだけ出す', async () => {
+  resetApp();
+  openEditor();
+  $('#title').value = 'フリーレン';
+  await withFetch(url => {
+    if (url.startsWith(ANILIST)) return new Response(JSON.stringify(ANILIST_JSON));
+    if (url.startsWith(ITUNES)) return new Response(JSON.stringify({ results: [apple('葬送のフリーレン(1)', '山田鐘人 & アベツカサ', ['マンガ']), apple('葬送のフリーレン(2)', '山田鐘人 & アベツカサ', ['マンガ']), apple('葬送のフリーレン 公式ファンブック', '山田鐘人', ['マンガ'])] }));
+    return Promise.reject(new Error('offline'));
+  }, runWorkSearch);
+  const titles = [...document.querySelectorAll('#work-results .work-result b')].map(x => x.textContent);
+  eq(titles.filter(x => x === '葬送のフリーレン').length, 2);
+  assert(titles.includes('葬送のフリーレン 公式ファンブック'), titles.join(','));
+  $('#dialog').close();
+});
+
+test('Apple Books: 巻数のない本（小説の本体）を、同じ題名の漫画版の巻より優先する', () => {
+  const found = parseAppleBooks({ results: [
+    apple('かがみの孤城 2', '辻村深月 & 武富智', ['マンガ']),
+    apple('かがみの孤城', '辻村深月', ['小説／文学'])
+  ] });
+  eq(found.map(x => [x.title, x.kind]), [['かがみの孤城', 'novel']]);
+});
+
+test('CSP: 候補の小さな表紙を出す画像サーバー（AniList・TMDB・Apple）を、画像の表示にも許可している', async () => {
+  const csp = (await indexHtml()).match(/Content-Security-Policy" content="([^"]+)"/)[1];
+  const img = csp.split(';').find(x => x.trim().startsWith('img-src'));
+  ['https://s4.anilist.co', 'https://image.tmdb.org', 'https://*.mzstatic.com'].forEach(host => assert(img.includes(host), host));
 });

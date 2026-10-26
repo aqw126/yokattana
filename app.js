@@ -657,11 +657,52 @@ async function fetchTmdbPeople(work) {
   if(!r.ok) throw new Error(`TMDB ${r.status}`);
   return tmdbPeople(await r.json())
 }
+// Apple Books の作者欄は「山田鐘人 & アベツカサ」「渡真仁, 三嶋くろね & 暁なつめ」のように複数人のことがある
+function bookAuthors(name) {
+  return String(name||'').split(/\s*(?:,|，|&|＆|、)\s*/).map(personName).filter(Boolean)
+}
+// 「葬送のフリーレン(15)」「ONE PIECE モノクロ版 115」の巻数を分ける。「1Q84」のような題名の数字は巻数にしない
+const BOOK_VOLUME=/(?:\s+|[(（]\s*)([0-9０-９]+)\s*[)）]?\s*$/;
+function bookVolume(name) {
+  const title=String(name||'').trim(),m=title.match(BOOK_VOLUME);
+  return m&&m.index>0?{ base:title.slice(0,m.index).trim(),volume:Number(m[1].normalize('NFKC')) }:{ base:title,volume:0 }
+}
+function bookCoverUrl(r) {
+  return r.artworkUrl100.replace(/\/\d+x\d+bb\./,'/600x600bb.')
+}
 // 題名が同じ（巻数などの続きは可）で、作者も同じ電子書籍の表紙だけを使う。違う本の表紙を付けないため
+// 題名がぴったり同じものを先に、続きものは若い巻（1巻）を選ぶ
 function pickBookCover(results,work) {
   const title=workKey(work.title),author=workKey(work.author);
-  const hit=(results||[]).find(r=>r.artworkUrl100&&workKey(r.trackName).startsWith(title)&&(author?workKey(r.artistName).replace(/[,，]/g,'')===author.replace(/[,，]/g,''):workKey(r.trackName)===title));
-  return hit?hit.artworkUrl100.replace(/\/\d+x\d+bb\./,'/600x600bb.'):''
+  const rank=r=>workKey(r.trackName)===title?-1:bookVolume(r.trackName).volume||Infinity;
+  const hits=(results||[]).filter(r=>r.artworkUrl100&&workKey(r.trackName).startsWith(title)&&(author?bookAuthors(r.artistName).some(a=>workKey(a)===author):workKey(r.trackName)===title));
+  hits.sort((a,b)=>rank(a)-rank(b));
+  return hits.length?bookCoverUrl(hits[0]):''
+}
+function appleBookKind(genres) {
+  const text=(genres||[]).join('/');
+  return /マンガ|コミック/.test(text)?'manga':/ライトノベル/.test(text)?'lightnovel':/小説|文学/.test(text)?'novel':'book'
+}
+// 本の候補を Apple Books からも出す。国立国会図書館サーチより速く（約0.5秒）、表紙もある。巻ごとの結果は1つにまとめ、若い巻の表紙を使う
+function parseAppleBooks(json) {
+  const groups=new Map();
+  for(const r of json?.results||[]) {
+    if(!r.trackName||!r.artworkUrl100||(r.genres||[]).includes('アダルト')) continue;
+    const { base,volume }=bookVolume(r.trackName),authors=bookAuthors(r.artistName),key=`${workKey(base)}|${workKey(authors[0])}`,group=groups.get(key);
+    if(!group) { groups.set(key, { r,base,volume,authors,count:1 }); continue; }
+    group.count++;
+    // 巻数のない本（単行本・小説の本体）を優先し、続きものの間では若い巻を使う
+    if(group.volume&&(!volume||volume<group.volume)) Object.assign(group, { r,volume })
+  }
+  return[...groups.values()].slice(0,5).map(({ r,base,authors,count })=>( {
+    source:'apple',kind:appleBookKind(r.genres),title:count>1?base:r.trackName.trim(),author:authors[0]||'',year:Number(String(r.releaseDate||'').slice(0,4))||null,
+    tags:authors.slice(0,2),thumb:r.artworkUrl100,cover:bookCoverUrl(r)
+  }))
+}
+async function searchAppleBooks(query) {
+  const r=await fetch(`${ITUNES}?${new URLSearchParams( { term:query,country:'jp',media:'ebook',limit:'25' })}`);
+  if(!r.ok) throw new Error(`iTunes ${r.status}`);
+  return parseAppleBooks(await r.json())
 }
 async function findBookCover(work) {
   const r=await fetch(`${ITUNES}?${new URLSearchParams( { term:[work.title,work.author].filter(Boolean).join(' '),country:'jp',media:'ebook',limit:'10' })}`);
@@ -712,7 +753,9 @@ async function runWorkSearch() {
     return
   }
   $('#work-status').textContent='検索しています…';
-  const searches=tmdbKey()?[searchAniList(query),searchTmdb(query),searchWikidata(query,['game']),searchNdl(query)]:[searchAniList(query),searchWikidata(query),searchNdl(query)];
+  const searches=tmdbKey()?[searchAniList(query),searchAppleBooks(query),searchTmdb(query),searchWikidata(query,['game']),searchNdl(query)]:[searchAniList(query),searchAppleBooks(query),searchWikidata(query),searchNdl(query)];
+  // 同じ作品（題名と作者が同じ）が別の検索先からも届いたら、先に届いた方だけを出す
+  const seen=new Set();
   let found=0,failed=0,left=searches.length;
   const status=()=> {
     if(left) return found?`${found}件の候補が見つかりました。ほかの候補も探しています…`:'検索しています…';
@@ -722,8 +765,13 @@ async function runWorkSearch() {
   };
   await Promise.all(searches.map(search=>search.then(list=> {
     if(id!==workSearchId) return;
-    list.forEach(work=>box.append(workOption(work)));
-    found+=list.length;
+    list.forEach(work=> {
+      const key=`${workKey(work.title)}|${workKey(work.author)}`;
+      if(seen.has(key)) return;
+      seen.add(key);
+      box.append(workOption(work));
+      found++
+    });
     box.hidden=!found
   },()=> { failed++; }).finally(()=> {
     left--;
@@ -758,7 +806,10 @@ async function applyWork(work) {
   // 取得中に別の記録を開いたり、別の候補を選んだりしたら捨てる（token で見分ける）
   try {
     const url=work.cover||await findBookCover(work);
-    if(!url) return;
+    if(!url) {
+      if(token===workSearchId) $('#work-status').textContent=`「${work.title}」の情報を入力しました（表紙画像は見つかりませんでした）。`;
+      return
+    }
     const cover=await fetchCover(url);
     if(token===workSearchId&&!state.cover) {
       state.cover=cover;
