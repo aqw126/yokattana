@@ -1,7 +1,7 @@
 // オフラインでも開けるようにする Service Worker。
 // 方針: ネットワークを先に試し（常に最新）、つながらないときだけ保存済みの内容を返す。
 // VERSION は tools/bump-version.py が更新する。
-const VERSION = '202610262004';
+const VERSION = '202610262051';
 const CACHE = 'yokattana-' + VERSION;
 const SUPABASE_JS = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js';
 const ASSETS = [

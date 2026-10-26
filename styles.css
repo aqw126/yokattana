@@ -34,6 +34,14 @@ body {
 button,input,select,textarea {
   font:inherit
 }
+/* 選択肢の一覧（ブラウザが描く部分）にも色を指定する。指定しないと、ダークモードで白地に白い文字になり、カーソルを置いた項目しか見えない */
+select {
+  color:var(--ink)
+}
+select option, select optgroup {
+  background-color:var(--surface);
+  color:var(--ink)
+}
 button {
   cursor:pointer
 }
