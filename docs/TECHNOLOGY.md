@@ -40,13 +40,13 @@ AniList ………… 漫画・アニメの作品情報と表紙画像（自動�
 | **localStorage** | ブラウザ内の保存領域（約5MB）。記録の本体の置き場所 | `app.js:1`（キー名）、`save()`、`load()` |
 | **Canvas API** | 表紙画像を、長辺600pxのJPEGに縮小 | `app.js:278`（`scaleImage`）、`:299`（`readCover`） |
 | **fetch + 外部の作品データ** | 作品の自動入力。本は国立国会図書館サーチ（OpenSearch・XML）、漫画・アニメは AniList（GraphQL）を、キー不要で直接呼ぶ。本の検索は遅いので、届いた順に候補を出す。表紙は画像を取得して Canvas で縮小し、data URL にして保存 | `app.js:600`（`runWorkSearch`）。詳しくは「7. 作品の自動入力」 |
-| **Blob / URL.createObjectURL** | JSON・CSV をファイルとして書き出す | `app.js:708`（`backup`）、`:846`（`exportCsv`） |
-| **TextDecoder** | UTF-8 で読めなければ Shift_JIS で読み直す | `app.js:916`（`readText`） |
-| **Web Crypto** | 記録のID（`randomUUID`）と、共有リンクの乱数（128ビット） | `app.js:245`、`:1253`（`makeShareToken`） |
-| **Clipboard / Web Share API** | リンクのコピーと、スマホの共有メニュー | `app.js:1305`（`copyText`） |
+| **Blob / URL.createObjectURL** | JSON・CSV をファイルとして書き出す | `app.js:708`（`backup`）、`:845`（`exportCsv`） |
+| **TextDecoder** | UTF-8 で読めなければ Shift_JIS で読み直す | `app.js:915`（`readText`） |
+| **Web Crypto** | 記録のID（`randomUUID`）と、共有リンクの乱数（128ビット） | `app.js:245`、`:1252`（`makeShareToken`） |
+| **Clipboard / Web Share API** | リンクのコピーと、スマホの共有メニュー | `app.js:1304`（`copyText`） |
 | **Intl.DateTimeFormat** | 日本語の日付表示 | `app.js` の `date()` |
 | **Web App Manifest** | ホーム画面に追加するときの名前・アイコン | `manifest.webmanifest` |
-| **Service Worker** | 通信を仲介し、オフラインでも開けるようにする | `sw.js:21`（install）、`:30`（activate）、`:38`（fetch）、登録は `app.js:1403` |
+| **Service Worker** | 通信を仲介し、オフラインでも開けるようにする | `sw.js:21`（install）、`:30`（activate）、`:38`（fetch）、登録は `app.js:1402` |
 
 ### 画面の描画のしかた
 - フレームワークを使わず、`render()` が、記録の配列から、カードを作り直します（`app.js:388`）。
@@ -64,7 +64,7 @@ Supabase は、PostgreSQL を中心にした、オープンソースの BaaS で
 | **PostgreSQL** | データベース本体。表は `library_items`（記録）と `shares`（共有） | `supabase-schema.sql:1`、`:49` |
 | **jsonb** | 記録の中身を、JSON のまま1列に保存できる型。項目を増やしても、表を変えずに済む | `library_items.payload` |
 | **Auth** | ログインの管理。Google でログインすると、**JWT**（本人の証明書）が発行され、ブラウザに保存される | `app.js:172`（`onAuthStateChange`）、`:174`（`getSession`） |
-| **PostgREST** | 表を、自動で REST API にする仕組み。`from('...').upsert()` は、この API を呼んでいる | `app.js:72`（記録の送信）、`:113`（取得）、`:1333`（共有の作成） |
+| **PostgREST** | 表を、自動で REST API にする仕組み。`from('...').upsert()` は、この API を呼んでいる | `app.js:72`（記録の送信）、`:113`（取得）、`:1332`（共有の作成） |
 | **RLS（行レベルセキュリティ）** | 「自分の行だけ読み書きできる」を、データベース側で強制 | `supabase-schema.sql:11`〜（記録）、`:61`〜（共有） |
 | **RPC（SQL 関数）** | `get_share()`（共有の閲覧）、`delete_my_account()`（退会） | `supabase-schema.sql:91`、`:30` |
 | **`security definer`** | 関数を、呼んだ人ではなく、持ち主の権限で動かす指定。使う場合は `search_path` の固定が必須 | `supabase-schema.sql:30`、`:91` |
@@ -82,7 +82,7 @@ Supabase は、PostgreSQL を中心にした、オープンソースの BaaS で
 | **OAuth 2.0（Google）** | パスワードを預からず、Google に本人確認を任せる | `app.js:194`（`signInWithGoogle`） |
 | **ログイン後の処理** | 別アカウントの記録を混ぜない確認、クラウドとの統合 | `app.js:142`（`finishLogin`） |
 | **ログアウト** | 端末の記録と、所有者の印を消す | `app.js:157`（`applySignedOut`） |
-| **退会** | RPC を呼び、クラウドのアカウントごと削除 | `app.js:969`（`deleteAccount`） |
+| **退会** | RPC を呼び、クラウドのアカウントごと削除 | `app.js:968`（`deleteAccount`） |
 | **Google Search Console** | サイトの所有確認（同意画面の公開に必要） | `index.html` の `google-site-verification` |
 
 ---
@@ -94,12 +94,12 @@ Supabase は、PostgreSQL を中心にした、オープンソースの BaaS で
 | **ローカルファースト** | 先に localStorage へ保存し、あとからクラウドへ送る。通信が切れても使える | `app.js:700`（`commit`） |
 | **Last-Write-Wins** | 記録ごとの `updatedAt` を比べ、新しい方を採用 | `app.js:61`（`mergeItems`） |
 | **トゥームストーン（削除の印）** | 行を消さず、`deleted: true` を付けて、他の端末にも削除を伝える | `app.js:218`（`emptyOf`） |
-| **ごみ箱** | 30日は中身を残し、過ぎたら中身だけ消す。90日で印も消す | `app.js:222`（`compactTrash`）、`:1000`（`renderTrash`） |
+| **ごみ箱** | 30日は中身を残し、過ぎたら中身だけ消す。90日で印も消す | `app.js:222`（`compactTrash`）、`:999`（`renderTrash`） |
 | **同期待ちと再送** | 失敗した記録のIDを控え、接続の復帰・1分ごと・タブを開いたときに再送 | `app.js:101`（`flushPending`） |
 | **まとめて送る** | 20件ずつ送信 | `app.js:66`（`syncItems`） |
 | **ページ分けの取得** | 100件ずつ全件を読む（取得上限を超えないため） | `app.js:110`（`fetchRemoteItems`） |
 | **ログイン時の統合** | クラウドと手元を合わせ、差分だけ送る | `app.js:119`（`loadCloudItems`） |
-| **別のタブの変更の取り込み** | `storage` イベントで検知 | `app.js:1408` |
+| **別のタブの変更の取り込み** | `storage` イベントで検知 | `app.js:1407` |
 
 ---
 
@@ -108,11 +108,11 @@ Supabase は、PostgreSQL を中心にした、オープンソースの BaaS で
 | 機能 | 場所 |
 |---|---|
 | 記録の正規化（壊れたデータを整える。XSS 対策も兼ねる） | `app.js:239`（`normalizeItem`） |
-| JSON の書き出し・読み込み | `app.js:708`（`backup`）、`:921`（`importJson`） |
-| CSV の書き出し（数式の実行を防ぐ印つき） | `app.js:840`（`csvCell`）、`:846`（`exportCsv`） |
-| CSV の読み込み（引用符・改行・見出しの名前の違いに対応） | `app.js:856`（`parseCsv`）、`:898`（`csvItems`）、`:939`（`importCsv`） |
-| ジャンル・タグの整理（名前の変更・まとめ・削除） | `app.js:1087`（`applyBulk`）、`:1094`（`renameOption`） |
-| 振り返り（集計と棒グラフ） | `app.js:1130`（`drawBars`）、`:1155`（`drawReview`） |
+| JSON の書き出し・読み込み | `app.js:708`（`backup`）、`:920`（`importJson`） |
+| CSV の書き出し（数式の実行を防ぐ印つき） | `app.js:839`（`csvCell`）、`:845`（`exportCsv`） |
+| CSV の読み込み（引用符・改行・見出しの名前の違いに対応） | `app.js:855`（`parseCsv`）、`:897`（`csvItems`）、`:938`（`importCsv`） |
+| ジャンル・タグの整理（名前の変更・まとめ・削除） | `app.js:1086`（`applyBulk`）、`:1093`（`renameOption`） |
+| 振り返り（集計と棒グラフ） | `app.js:1129`（`drawBars`）、`:1154`（`drawReview`） |
 
 ---
 
@@ -120,10 +120,10 @@ Supabase は、PostgreSQL を中心にした、オープンソースの BaaS で
 
 | 要素 | 内容 | 場所 |
 |---|---|---|
-| 共有の中身を作る | ネタバレの扱い（含めない／ネタバレなしだけ／すべて）に応じて、メモと引用を出し入れ。表紙・ID・メールは含めない | `app.js:1258`（`sharePayload`） |
-| リンクの文字列 | 128ビットの乱数を base64url に | `app.js:1253`（`makeShareToken`） |
-| 作成・一覧・停止 | `shares` への挿入、取得、削除 | `app.js:1324`（`createShare`）、`:1346`（`loadMyShares`） |
-| 手動で選ぶ | 選択のモード、選択の保持、並び順の維持 | `app.js:1220`（`pickedItems`）、`:1235`（`setPicking`） |
+| 共有の中身を作る | ネタバレの扱い（含めない／ネタバレなしだけ／すべて）に応じて、メモと引用を出し入れ。表紙・ID・メールは含めない | `app.js:1257`（`sharePayload`） |
+| リンクの文字列 | 128ビットの乱数を base64url に | `app.js:1252`（`makeShareToken`） |
+| 作成・一覧・停止 | `shares` への挿入、取得、削除 | `app.js:1323`（`createShare`）、`:1345`（`loadMyShares`） |
+| 手動で選ぶ | 選択のモード、選択の保持、並び順の維持 | `app.js:1219`（`pickedItems`）、`:1234`（`setPicking`） |
 | 閲覧ページ | `share.html#<リンクの文字列>` を読み、RPC で取得して表示。すべて `textContent` | `share.js:60`（`loadShare`）、`:21`（`renderShare`） |
 | ネタバレの隠し方 | ネタバレありの記録は、閉じた `<details>` に入れる | `share.js` の `renderShareItem` |
 | 閲覧ページの安全策 | 検索除外、参照元を送らない、通信先の限定、SRI | `share.html` の `<head>` |
@@ -161,7 +161,7 @@ Supabase は、PostgreSQL を中心にした、オープンソースの BaaS で
 | 想定外の通信・実行 | **CSP**（読み込み・通信先の許可リスト）。通信先は Supabase、AniList、国立国会図書館サーチ、画像は AniList の画像サーバーだけ | `index.html:15` |
 | 外部の作品データの注入 | 検索結果は `textContent` で表示し、表紙は取得後に Canvas で描き直して data URL に。外部の画像URLは保存しない | `app.js:578`（`workOption`）、`:628`（`fetchCover`） |
 | 共有リンクの推測 | 128ビットの乱数。一覧は取れず、IDを知る人が1件だけ読める | `get_share`（`supabase-schema.sql:91`） |
-| CSV の数式実行 | `=` `+` `-` `@` で始まるセルに印 | `app.js:840`（`csvCell`） |
+| CSV の数式実行 | `=` `+` `-` `@` で始まるセルに印 | `app.js:839`（`csvCell`） |
 | 乱用 | 共有は1人50件（期限切れは数えない）、100件まで、1MB未満、題名は100文字まで | `supabase-schema.sql:49`〜、`:154`〜 |
 | 期限切れの共有の残り | 作成のたびに自分の分を、週1回の keepalive で全員の分を消す（`purge_expired_shares`。消すのは見られなくなったものだけなので、公開キーで呼べる） | `supabase-schema.sql:183`、`.github/workflows/keepalive.yml` |
 | 別アカウントへの混入 | 端末の所有者を記録し、違えば破棄 | `app.js:142`（`finishLogin`） |
