@@ -16,7 +16,7 @@
     <link rel="icon" href="icon.svg" type="image/svg+xml">
     <script src="theme.js"></script>
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="styles.css?v=202610261859">
+    <link rel="stylesheet" href="styles.css?v=202610262004">
   </head>
   <body>
     <a class="skip-link" href="#top">本文へ移動</a>
@@ -287,10 +287,10 @@
               </em>
               <textarea id="quote" rows="3" maxlength="1000" placeholder="作品の中の、心に残った言葉など。"></textarea>
             </label>
-            <label class="check">
-              <input id="spoiler" type="checkbox">
-              メモ・引用にネタバレを含む
-            </label>
+            <div class="spoiler-tool">
+              <button id="mark-spoiler" class="secondary" type="button">選んだ部分をネタバレにする</button>
+              <small id="spoiler-hint" role="status" aria-live="polite">「||」で囲んだ部分は、カードや共有ページで隠れます。ネタバレの部分を選んで押すと解除できます。</small>
+            </div>
           </div>
         </section>
         <footer>
@@ -342,8 +342,8 @@
         <fieldset class="share-field">
           <legend>メモ・引用</legend>
           <label class="check"><input type="radio" name="share-mode" value="none" checked> 含めない（おすすめ）</label>
-          <label class="check"><input type="radio" name="share-mode" value="safe"> ネタバレなしの記録のものだけ含める</label>
-          <label class="check"><input type="radio" name="share-mode" value="all"> すべて含める（ネタバレありの記録は、見る側で隠して表示）</label>
+          <label class="check"><input type="radio" name="share-mode" value="safe"> ネタバレの部分を除いて含める</label>
+          <label class="check"><input type="radio" name="share-mode" value="all"> すべて含める（ネタバレの部分は、見る側で隠して表示）</label>
         </fieldset>
         <label class="share-field">有効期限
           <select id="share-expiry">
@@ -495,9 +495,9 @@
       </article>
     </template>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js" integrity="sha384-TcHRA3zBbn+Lexh5n+Oil4guNPOS3rjNDpGRAN46u/s/mB2IZ50ceC6TYDU2yvgK" crossorigin="anonymous"></script>
-    <script src="supabase-config.js?v=202610261859"></script>
-    <script src="tmdb-config.js?v=202610261859"></script>
-    <script src="app.js?v=202610261859"></script>
+    <script src="supabase-config.js?v=202610262004"></script>
+    <script src="tmdb-config.js?v=202610262004"></script>
+    <script src="app.js?v=202610262004"></script>
   </body>
 </html>
 

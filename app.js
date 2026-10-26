@@ -236,6 +236,46 @@ function localDay(d=new Date()) {
 function basisDay(item) {
   return item.readAt||localDay(new Date(item.createdAt))
 }
+// ネタバレは、メモ・引用の中の「||」で囲んだ部分。「最後に||犯人は兄||だと分かる」
+const SPOILER=/\|\|([\s\S]+?)\|\|/g;
+function hasSpoiler(text) {
+  return new RegExp(SPOILER.source).test(String(text||''))
+}
+// 文字列を、ふつうの部分とネタバレの部分に分ける。閉じていない「||」は、そのまま文字として扱う
+function spoilerParts(text) {
+  const parts=[],value=String(text||'');
+  let last=0;
+  for(const m of value.matchAll(SPOILER)) {
+    if(m.index>last) parts.push( { text:value.slice(last,m.index),spoiler:false });
+    parts.push( { text:m[1],spoiler:true });
+    last=m.index+m[0].length
+  }
+  if(last<value.length) parts.push( { text:value.slice(last),spoiler:false });
+  return parts
+}
+// 選んだ範囲 [start,end) をネタバレにする。すでにネタバレの部分と重なるときは、1つにまとめる（隠れていた文字が見えないように）。
+// 選んだ範囲がネタバレの部分の内側だけなら、その部分のネタバレを解除する。戻り値は新しい文字列と、選び直す範囲
+function toggleSpoiler(value,start,end) {
+  const marks=[...String(value).matchAll(SPOILER)].map(m=>( { start:m.index,end:m.index+m[0].length,inner:m[1] }));
+  const hit=marks.filter(m=>m.start<end&&m.end>start);
+  if(hit.length===1&&start>=hit[0].start&&end<=hit[0].end) {
+    const m=hit[0];
+    return { value:value.slice(0,m.start)+m.inner+value.slice(m.end),start:m.start,end:m.start+m.inner.length,removed:true }
+  }
+  const from=Math.min(start,...hit.map(m=>m.start)),to=Math.max(end,...hit.map(m=>m.end));
+  let inner='',at=from;
+  hit.forEach(m=> { inner+=value.slice(at,m.start)+m.inner; at=m.end; });
+  inner+=value.slice(at,to);
+  return { value:`${value.slice(0,from)}||${inner}||${value.slice(to)}`,start:from,end:from+inner.length+4,removed:false }
+}
+// 共有で「ネタバレの部分を除く」ときに使う
+function withoutSpoilers(text) {
+  return String(text||'').replace(SPOILER,'（ネタバレのため省略）').trim()
+}
+// 以前の「記録全体がネタバレ」の印は、メモ・引用の全体を「||」で囲む形に置き換える（隠れていたものが見えないように）
+function wrapSpoiler(text) {
+  return text&&!hasSpoiler(text)?`||${text}||`:text
+}
 function normalizeItem(raw) {
   if(!raw||typeof raw!=='object') return null;
   const deleted=raw.deleted===true,title=String(raw.title??'').trim();
@@ -246,9 +286,12 @@ function normalizeItem(raw) {
     title,genre:String(raw.genre??'').trim()||'未分類',
     rating:Math.min(5,Math.max(3,Number(raw.rating)||3)),
     tags:Array.isArray(raw.tags)?[...new Set(raw.tags.map(t=>String(t).trim()).filter(Boolean))]:[],
-    notes:String(raw.notes??'').trim(),
-    quote:String(raw.quote??'').trim().slice(0,1000),
-    spoiler:raw.spoiler===true,
+    ...(()=> {
+      const legacy=raw.spoiler===true;
+      let notes=String(raw.notes??'').trim(),quote=String(raw.quote??'').trim().slice(0,1000);
+      if(legacy) { notes=wrapSpoiler(notes); quote=wrapSpoiler(quote); }
+      return { notes,quote,spoiler:hasSpoiler(notes)||hasSpoiler(quote) }
+    })(),
     cover:typeof raw.cover==='string'&&COVER.test(raw.cover)?raw.cover:null,
     readAt:validDay(raw.readAt),createdAt,updatedAt:notFuture(validDate(raw.updatedAt,createdAt)),deleted
   }
@@ -385,6 +428,16 @@ function compareItems(s,a,b) {
   }
   return added
 }
+// カードでは、ネタバレの部分を「ネタバレ」の印に置き換える（カード全体が編集を開くボタンなので、その場では開けない）
+function maskedSpoilers(text) {
+  return spoilerParts(text).map(part=> {
+    if(!part.spoiler) return document.createTextNode(part.text);
+    const mask=document.createElement('span');
+    mask.className='spoiler-mask';
+    mask.textContent='ネタバレ';
+    return mask
+  })
+}
 function render() {
   renderFilter('genre',genres());
   renderFilter('tag',alltags());
@@ -427,10 +480,10 @@ function render() {
       return span
     }));
     let p=n.querySelector('.cardbody p');
-    p.textContent=x.notes||'';
+    p.replaceChildren(...maskedSpoilers(x.notes));
     p.hidden=!x.notes;
     const quote=n.querySelector('blockquote');
-    quote.textContent=x.quote||'';
+    quote.replaceChildren(...maskedSpoilers(x.quote));
     quote.hidden=!x.quote;
     n.querySelector('.spoiler-badge').hidden=!x.spoiler;
     n.querySelector('footer small').textContent=x.readAt?date(x.readAt+'T00:00:00')+' に読んだ':date(x.createdAt)+' に追加';
@@ -848,7 +901,6 @@ function openEditor(x) {
     renderFormTags();
     $('#notes').value=x.notes||'';
     $('#quote').value=x.quote||'';
-    $('#spoiler').checked=!!x.spoiler;
     $('#readAt').value=x.readAt||'';
     state.cover=x.cover||null;
     preview(state.cover)
@@ -912,6 +964,23 @@ $('#entryGenre').addEventListener('input',renderGenreChips);
 $('#rating').oninput=x=>$('#ratingValue').textContent=Number(x.target.value).toFixed(1);
 $('#add-tag').onclick=addFormTag;
 $('#work-search').onclick=runWorkSearch;
+// 選んだ文字を「||」で囲む。最後に触ったメモか引用が対象（ボタンを押すと選択は外れるが、範囲は textarea に残る）
+let spoilerTarget='#notes';
+['#notes','#quote'].forEach(s=>$(s).addEventListener('focus',()=> { spoilerTarget=s; }));
+$('#mark-spoiler').onclick=()=> {
+  const area=$(spoilerTarget),start=area.selectionStart,end=area.selectionEnd,picked=area.value.slice(start,end);
+  if(!picked.trim()) {
+    $('#spoiler-hint').textContent='メモか引用で、ネタバレにしたい部分を選んでから押してください。';
+    area.focus();
+    return
+  }
+  const next=toggleSpoiler(area.value,start,end);
+  area.value=next.value;
+  area.setSelectionRange(next.start,next.end);
+  area.dispatchEvent(new Event('input', { bubbles:true }));
+  $('#spoiler-hint').textContent=next.removed?'ネタバレを解除しました。':'「||」で囲んだ部分は、カードや共有ページで隠れます。もう一度押すと解除できます。';
+  area.focus()
+};
 $('#tmdb-credit').hidden=!tmdbKey();
 $('#tag-input').addEventListener('keydown', event=> {
   if(event.key==='Enter') {
@@ -942,7 +1011,7 @@ $('#form').onsubmit=x=> {
   x.preventDefault();
   addFormTag();
   let id=$('#id').value,old=state.items.find(x=>x.id===id),entry= {
-    id:id||crypto.randomUUID(),title:$('#title').value.trim(),genre:$('#entryGenre').value.trim(),rating:Number($('#rating').value),readAt:validDay($('#readAt').value),tags:[...state.formTags],notes:$('#notes').value.trim(),quote:$('#quote').value.trim(),spoiler:$('#spoiler').checked,cover:state.cover,createdAt:old?.createdAt||new Date().toISOString(),updatedAt:new Date().toISOString(),deleted:false
+    id:id||crypto.randomUUID(),title:$('#title').value.trim(),genre:$('#entryGenre').value.trim(),rating:Number($('#rating').value),readAt:validDay($('#readAt').value),tags:[...state.formTags],notes:$('#notes').value.trim(),quote:$('#quote').value.trim(),spoiler:hasSpoiler($('#notes').value)||hasSpoiler($('#quote').value),cover:state.cover,createdAt:old?.createdAt||new Date().toISOString(),updatedAt:new Date().toISOString(),deleted:false
   };
   if(!commit(old?state.items.map(x=>x.id===id?entry:x):[...state.items,entry])) return;
   markPending([entry]);
@@ -1422,10 +1491,14 @@ function makeShareToken() {
 // mode: none = メモ・引用を含めない / safe = ネタバレなしの記録だけ / all = すべて（ネタバレ記録には印を付ける）
 function sharePayload(items,{ title,criteria,mode }) {
   return {
-    v:1,title:String(title||'').slice(0,100),criteria:String(criteria||'').slice(0,200),sharedAt:new Date().toISOString(),
+    v:2,title:String(title||'').slice(0,100),criteria:String(criteria||'').slice(0,200),sharedAt:new Date().toISOString(),
     items:items.slice(0,SHARE_LIMIT).map(x=> {
       const out= { title:x.title,genre:x.genre,rating:x.rating,readAt:x.readAt||null,tags:[...x.tags] };
-      if(mode!=='none'&&(mode==='all'||!x.spoiler)&&(x.notes||x.quote)) { out.notes=x.notes||''; out.quote=x.quote||''; out.spoiler=!!x.spoiler; }
+      // safe: ネタバレの部分を「（ネタバレのため省略）」にして送る。all: 「||」のまま送り、閲覧ページで隠す
+      // 「||」のない古い形（記録全体がネタバレ）でも漏らさないよう、ここでも全体を囲む
+      const legacy=x.spoiler&&!hasSpoiler(x.notes)&&!hasSpoiler(x.quote),src=legacy? { notes:wrapSpoiler(x.notes),quote:wrapSpoiler(x.quote) }:x;
+      const notes=mode==='safe'?withoutSpoilers(src.notes):src.notes||'',quote=mode==='safe'?withoutSpoilers(src.quote):src.quote||'';
+      if(mode!=='none'&&(notes||quote)) { out.notes=notes; out.quote=quote; }
       return out
     })
   }

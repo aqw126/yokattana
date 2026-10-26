@@ -8,6 +8,25 @@ function node(tag, className, text) {
   return el;
 }
 
+// メモ・引用の中の「||」で囲んだ部分はネタバレ。押すと、その部分だけが表示される
+const SHARE_SPOILER = /\|\|([\s\S]+?)\|\|/g;
+
+function withSpoilers(tag, text) {
+  const el = node(tag, '');
+  const value = String(text);
+  let last = 0;
+  for (const m of value.matchAll(SHARE_SPOILER)) {
+    if (m.index > last) el.append(value.slice(last, m.index));
+    const button = node('button', 'spoiler-reveal', 'ネタバレ（押すと表示）');
+    button.type = 'button';
+    button.onclick = () => button.replaceWith(node('span', 'spoiler-shown', m[1]));
+    el.append(button);
+    last = m.index + m[0].length;
+  }
+  if (last < value.length) el.append(value.slice(last));
+  return el;
+}
+
 function formatDay(value) {
   const d = new Date(value);
   return isNaN(d) ? '' : new Intl.DateTimeFormat('ja-JP', { year: 'numeric', month: 'numeric', day: 'numeric' }).format(d);
@@ -31,10 +50,10 @@ function renderShareItem(item) {
   }
   if (item.notes || item.quote) {
     const body = node('div', 'share-body');
-    if (item.notes) body.append(node('p', '', String(item.notes)));
-    if (item.quote) body.append(node('blockquote', '', String(item.quote)));
+    if (item.notes) body.append(withSpoilers('p', item.notes));
+    if (item.quote) body.append(withSpoilers('blockquote', item.quote));
     if (item.spoiler) {
-      // ネタバレありの記録は、閉じた状態で表示する
+      // 以前の共有（記録全体がネタバレの印）は、閉じた状態で表示する
       const details = node('details', 'share-spoiler');
       details.append(node('summary', '', 'ネタバレを含みます（開くと表示）'), body);
       card.append(details);
@@ -51,7 +70,8 @@ function renderShare(root, result) {
   root.append(node('h1', '', String(payload.title || '共有された記録')));
   const meta = [payload.criteria, `${items.length}件`, payload.sharedAt ? formatDay(payload.sharedAt) + ' に共有' : ''].filter(Boolean).join(' ・ ');
   root.append(node('p', 'share-meta', meta));
-  if (items.some(x => x.spoiler)) root.append(node('p', 'share-note', 'ネタバレを含む部分は、閉じた状態で表示しています。'));
+  const spoilers = items.some(x => x.spoiler || [x.notes, x.quote].some(t => new RegExp(SHARE_SPOILER.source).test(String(t || ''))));
+  if (spoilers) root.append(node('p', 'share-note', 'ネタバレの部分は隠しています。押すと表示されます。'));
   const list = node('div', 'share-list');
   items.forEach(item => list.append(renderShareItem(item)));
   root.append(list);

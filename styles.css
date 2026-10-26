@@ -760,6 +760,12 @@ dialog footer {
 .cardbody blockquote { margin:8px 0 0; padding:2px 0 2px 10px; border-left:3px solid var(--sage); color:var(--muted); font-size:12px; line-height:1.7; overflow-wrap:anywhere; }
 .cardbody blockquote[hidden], .spoiler-badge[hidden] { display:none; }
 .spoiler-badge { font-style:normal; font-size:10px; padding:1px 6px; border-radius:10px; background:var(--pale); color:var(--warm); }
+.spoiler-mask { display:inline-block; margin:0 2px; padding:0 8px; border-radius:4px; background:var(--ink); color:var(--canvas); font-size:11px; line-height:1.6; vertical-align:baseline; }
+.spoiler-tool { display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; margin-top:-8px; }
+.spoiler-tool .secondary { padding:7px 12px; font-size:12px; }
+.spoiler-tool small { color:var(--muted); font-size:11px; line-height:1.6; }
+.spoiler-reveal { display:inline; margin:0 2px; padding:0 8px; border:0; border-radius:4px; background:var(--ink); color:var(--canvas); font:inherit; font-size:12px; line-height:1.7; cursor:pointer; }
+.spoiler-shown { background:var(--pale); border-radius:4px; padding:0 2px; }
 
 .share-field { display:grid; gap:6px; margin:14px 0; padding:0; border:0; font-size:13px; font-weight:650; }
 .share-field legend { padding:0; margin-bottom:6px; }
