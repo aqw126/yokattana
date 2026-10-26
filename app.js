@@ -253,6 +253,21 @@ function spoilerParts(text) {
   if(last<value.length) parts.push( { text:value.slice(last),spoiler:false });
   return parts
 }
+// 選んだ範囲 [start,end) をネタバレにする。すでにネタバレの部分と重なるときは、1つにまとめる（隠れていた文字が見えないように）。
+// 選んだ範囲がネタバレの部分の内側だけなら、その部分のネタバレを解除する。戻り値は新しい文字列と、選び直す範囲
+function toggleSpoiler(value,start,end) {
+  const marks=[...String(value).matchAll(SPOILER)].map(m=>( { start:m.index,end:m.index+m[0].length,inner:m[1] }));
+  const hit=marks.filter(m=>m.start<end&&m.end>start);
+  if(hit.length===1&&start>=hit[0].start&&end<=hit[0].end) {
+    const m=hit[0];
+    return { value:value.slice(0,m.start)+m.inner+value.slice(m.end),start:m.start,end:m.start+m.inner.length,removed:true }
+  }
+  const from=Math.min(start,...hit.map(m=>m.start)),to=Math.max(end,...hit.map(m=>m.end));
+  let inner='',at=from;
+  hit.forEach(m=> { inner+=value.slice(at,m.start)+m.inner; at=m.end; });
+  inner+=value.slice(at,to);
+  return { value:`${value.slice(0,from)}||${inner}||${value.slice(to)}`,start:from,end:from+inner.length+4,removed:false }
+}
 // 共有で「ネタバレの部分を除く」ときに使う
 function withoutSpoilers(text) {
   return String(text||'').replace(SPOILER,'（ネタバレのため省略）').trim()
@@ -959,9 +974,11 @@ $('#mark-spoiler').onclick=()=> {
     area.focus();
     return
   }
-  area.setRangeText(`||${picked}||`,start,end,'select');
+  const next=toggleSpoiler(area.value,start,end);
+  area.value=next.value;
+  area.setSelectionRange(next.start,next.end);
   area.dispatchEvent(new Event('input', { bubbles:true }));
-  $('#spoiler-hint').textContent='「||」で囲んだ部分は、カードや共有ページで隠れます。';
+  $('#spoiler-hint').textContent=next.removed?'ネタバレを解除しました。':'「||」で囲んだ部分は、カードや共有ページで隠れます。もう一度押すと解除できます。';
   area.focus()
 };
 $('#tmdb-credit').hidden=!tmdbKey();

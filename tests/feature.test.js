@@ -723,3 +723,35 @@ test('ネタバレの部分: 閲覧ページでは部分ごとに隠し、押す
   eq(root.querySelector('.share-body p').textContent, '前半<b>秘密</b>後半');
   assert(!root.querySelector('.share-body b'), 'shown as text, not HTML');
 });
+
+test('ネタバレの部分: 重ねて選ぶと、隠れていた文字を見せずに1つにまとめ、内側だけを選ぶと解除する', () => {
+  const t = '最後に||犯人は兄||だと分かる';
+  const at = (text, from, to) => { const s = text.indexOf(from); return [s, to ? text.indexOf(to) + to.length : s + from.length]; };
+  // 内側だけ（記号を含めても）→ 解除
+  eq(toggleSpoiler(t, ...at(t, '犯人は兄')).value, '最後に犯人は兄だと分かる');
+  eq(toggleSpoiler(t, ...at(t, '人は')).value, '最後に犯人は兄だと分かる');
+  eq(toggleSpoiler(t, ...at(t, '||犯人は兄||')).value, '最後に犯人は兄だと分かる');
+  // 端をまたぐ → まとめる（「兄」が見えるようにならない）
+  const merged = toggleSpoiler(t, ...at(t, '兄||だと')).value;
+  eq(merged, '最後に||犯人は兄だと||分かる');
+  eq(spoilerParts(merged).filter(p => p.spoiler).map(p => p.text), ['犯人は兄だと']);
+  // 2つにまたがる → 1つに
+  eq(toggleSpoiler('||A||と||B||', ...at('||A||と||B||', 'A', 'B')).value, '||AとB||');
+  // ふつうの文字 → 囲む
+  eq(toggleSpoiler('abc', 1, 2).value, 'a||b||c');
+});
+
+test('ネタバレの部分: ボタンをもう一度押すと解除できる', () => {
+  resetApp();
+  openEditor();
+  const notes = $('#notes');
+  notes.value = '最後に犯人は兄だと分かる';
+  notes.focus();
+  notes.setSelectionRange(3, 7);
+  $('#mark-spoiler').click();
+  eq(notes.value, '最後に||犯人は兄||だと分かる');
+  $('#mark-spoiler').click();
+  eq(notes.value, '最後に犯人は兄だと分かる');
+  assert($('#spoiler-hint').textContent.includes('解除しました'), 'says it was removed');
+  $('#dialog').close();
+});
