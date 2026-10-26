@@ -447,7 +447,7 @@ test('自動入力: 両方の検索に失敗したら、そう伝える', async 
 
 test('自動入力: CSP で、検索先と表紙の取得先だけを許可している', async () => {
   const csp = (await indexHtml()).match(/Content-Security-Policy" content="([^"]+)"/)[1];
-  ['https://graphql.anilist.co', 'https://ndlsearch.ndl.go.jp', 'https://s4.anilist.co', 'https://www.wikidata.org', 'https://itunes.apple.com', 'https://*.mzstatic.com'].forEach(host => assert(csp.includes(host), host));
+  ['https://graphql.anilist.co', 'https://ndlsearch.ndl.go.jp', 'https://s4.anilist.co', 'https://www.wikidata.org', 'https://itunes.apple.com', 'https://*.mzstatic.com', 'https://api.themoviedb.org', 'https://image.tmdb.org'].forEach(host => assert(csp.includes(host), host));
 });
 
 // ---- セキュリティの強化 ----
@@ -546,4 +546,63 @@ test('Wikidata: 検索から候補を作るまで（名前は2回目の問い合
   }, () => searchWikidata('test'));
   eq(calls, ['wbsearchentities:', 'wbgetentities:labels|claims', 'wbgetentities:labels']);
   eq(found.map(x => x.title), ['ゼルダの伝説 ブレス オブ ザ ワイルド', 'ショーシャンクの空に']);
+});
+
+// ---- TMDB（キーがあるときだけ） ----
+const TMDB_JSON = { results: [
+  { media_type: 'movie', id: 278, title: 'ショーシャンクの空に', release_date: '1994-09-23', genre_ids: [18, 80], poster_path: '/p1.jpg', original_language: 'en' },
+  { media_type: 'tv', id: 61374, name: '半沢直樹', first_air_date: '2013-07-07', genre_ids: [18, 9648], poster_path: null, original_language: 'ja' },
+  { media_type: 'movie', id: 129, title: '千と千尋の神隠し', genre_ids: [16, 14], original_language: 'ja' },
+  { media_type: 'movie', id: 862, title: 'トイ・ストーリー', genre_ids: [16, 35], original_language: 'en' },
+  { media_type: 'person', id: 1, name: '誰か' }
+] };
+function withTmdbKey(key, fn) {
+  const original = window.TMDB_CONFIG;
+  window.TMDB_CONFIG = { apiKey: key };
+  return Promise.resolve().then(fn).finally(() => { window.TMDB_CONFIG = original; });
+}
+
+test('TMDB: 映画・ドラマだけを残し、日本のアニメ（AniList と重なる）と人物は除く', () => {
+  const found = parseTmdb(TMDB_JSON);
+  eq(found.map(x => [x.title, x.kind, x.year, x.tags]), [
+    ['ショーシャンクの空に', 'movie', 1994, ['ドラマ', '犯罪']],
+    ['半沢直樹', 'drama', 2013, ['ミステリー']],
+    ['トイ・ストーリー', 'movie', null, ['アニメーション', 'コメディ']]
+  ]);
+  eq([found[0].thumb, found[0].cover], ['https://image.tmdb.org/t/p/w92/p1.jpg', 'https://image.tmdb.org/t/p/w500/p1.jpg']);
+  eq([found[1].thumb, found[1].cover], ['', '']);
+});
+
+test('TMDB: 監督（映画）と制作者（ドラマ）を取り出す', () => {
+  eq(tmdbPeople({ credits: { crew: [{ job: 'Writer', name: 'X' }, { job: 'Director', name: 'Frank Darabont' }] } }), ['Frank Darabont']);
+  eq(tmdbPeople({ created_by: [{ name: '福澤, 克雄' }], credits: { crew: [{ job: 'Director', name: 'Y' }] } }), ['福澤克雄']);
+});
+
+test('TMDB: キーは32文字の英数字だけを使い、空ならクレジットも出さない', async () => {
+  await withTmdbKey('', () => eq(tmdbKey(), ''));
+  await withTmdbKey('ここにキー', () => eq(tmdbKey(), ''));
+  await withTmdbKey(' 0123456789abcdef0123456789ABCDEF ', () => eq(tmdbKey(), '0123456789abcdef0123456789ABCDEF'));
+  assert($('#tmdb-credit').hidden, 'no credit without a key');
+});
+
+test('TMDB: キーがあれば映画・ドラマは TMDB で探し、Wikidata はゲームだけにする', async () => {
+  resetApp();
+  openEditor();
+  $('#title').value = 'ショーシャンク';
+  const asked = [];
+  await withTmdbKey('0123456789abcdef0123456789abcdef', () => withFetch(url => {
+    asked.push(url.split('?')[0]);
+    if (url.startsWith(TMDB)) return new Response(JSON.stringify(TMDB_JSON));
+    if (url.startsWith(WIKIDATA)) {
+      const action = new URL(url).searchParams.get('action');
+      return new Response(JSON.stringify(action === 'wbsearchentities' ? { search: [{ id: 'Q1' }, { id: 'Q3' }] } : { entities: action && new URL(url).searchParams.get('props') === 'labels|claims' ? { Q1: WD_ENTITIES.Q1, Q3: WD_ENTITIES.Q3 } : {} }));
+    }
+    return Promise.reject(new Error('offline'));
+  }, runWorkSearch));
+  assert(asked.includes(`${TMDB}/search/multi`), 'TMDB searched');
+  const options = [...document.querySelectorAll('#work-results .work-result small')].map(x => x.textContent);
+  eq(options.filter(x => x.startsWith('ゲーム')).length, 1);
+  eq(options.filter(x => x.startsWith('映画')).length, 2);
+  assert(!options.some(x => x.includes('フランク・ダラボン')), 'no Wikidata movie when TMDB is on');
+  $('#dialog').close();
 });

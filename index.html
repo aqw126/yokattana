@@ -12,11 +12,11 @@
     <meta property="og:type" content="website">
     <meta property="og:title" content="よかっ棚">
     <meta property="og:description" content="体験したものを自分の言葉で残す、個人用の記録アプリ。">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self'; img-src 'self' data: blob: https://s4.anilist.co; connect-src 'self' https://ndiwvgsgpmipypcipcpo.supabase.co https://graphql.anilist.co https://s4.anilist.co https://ndlsearch.ndl.go.jp https://www.wikidata.org https://itunes.apple.com https://*.mzstatic.com; worker-src 'self'; manifest-src 'self'; base-uri 'none'; require-trusted-types-for 'script'; trusted-types yokattana; form-action 'self'">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self'; img-src 'self' data: blob: https://s4.anilist.co https://image.tmdb.org; connect-src 'self' https://ndiwvgsgpmipypcipcpo.supabase.co https://api.themoviedb.org https://image.tmdb.org https://graphql.anilist.co https://s4.anilist.co https://ndlsearch.ndl.go.jp https://www.wikidata.org https://itunes.apple.com https://*.mzstatic.com; worker-src 'self'; manifest-src 'self'; base-uri 'none'; require-trusted-types-for 'script'; trusted-types yokattana; form-action 'self'">
     <link rel="icon" href="icon.svg" type="image/svg+xml">
     <script src="theme.js"></script>
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="styles.css?v=202610261822">
+    <link rel="stylesheet" href="styles.css?v=202610261838">
   </head>
   <body>
     <a class="skip-link" href="#top">本文へ移動</a>
@@ -184,6 +184,7 @@
     </main>
     <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
     <p class="site-footer"><a href="privacy.html">プライバシーポリシー</a></p>
+    <p class="site-footer tmdb-credit" id="tmdb-credit" hidden><img src="tmdb-logo.svg" alt="TMDB" width="110" height="14"><br>映画・ドラマの情報とポスターは TMDB のものです。このアプリは TMDB API を使っていますが、TMDB の承認・認定を受けたものではありません。</p>
     <dialog id="dialog" aria-labelledby="modalTitle">
       <form id="form">
         <section class="modalhead">
@@ -494,8 +495,9 @@
       </article>
     </template>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js" integrity="sha384-TcHRA3zBbn+Lexh5n+Oil4guNPOS3rjNDpGRAN46u/s/mB2IZ50ceC6TYDU2yvgK" crossorigin="anonymous"></script>
-    <script src="supabase-config.js?v=202610261822"></script>
-    <script src="app.js?v=202610261822"></script>
+    <script src="supabase-config.js?v=202610261838"></script>
+    <script src="tmdb-config.js?v=202610261838"></script>
+    <script src="app.js?v=202610261838"></script>
   </body>
 </html>
 
