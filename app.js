@@ -513,7 +513,17 @@ const ANILIST_GENRES= {
   Action:'アクション',Adventure:'冒険',Comedy:'コメディ',Drama:'ドラマ',Fantasy:'ファンタジー',Horror:'ホラー','Mahou Shoujo':'魔法少女',Mecha:'ロボット',Music:'音楽',Mystery:'ミステリー',Psychological:'心理',Romance:'恋愛','Sci-Fi':'SF','Slice of Life':'日常',Sports:'スポーツ',Supernatural:'超常',Thriller:'サスペンス'
 };
 // ジャンル名の候補。すでに使っている名前があれば、それを優先する
-const WORK_GENRES= { anime:['アニメ'],manga:['漫画','マンガ','コミック'],lightnovel:['ライトノベル','ラノベ','小説'],novel:['小説'],book:['本','書籍'] };
+const WORK_GENRES= { anime:['アニメ'],manga:['漫画','マンガ','コミック'],lightnovel:['ライトノベル','ラノベ','小説'],novel:['小説'],book:['本','書籍'],movie:['映画'],drama:['ドラマ','テレビドラマ'],game:['ゲーム'] };
+// 映画・ドラマ・ゲームは Wikidata で探す。種類（P31）で見分け、アニメは AniList と重なるので除く
+const WIKIDATA='https://www.wikidata.org/w/api.php';
+const WIKIDATA_KINDS= {
+  movie:['Q11424','Q24869','Q506240','Q93204','Q24862','Q29168811','Q202866','Q229390','Q17517379'],
+  drama:['Q5398426','Q1259759','Q526877'],
+  game:['Q7889','Q865493']
+};
+const WIKIDATA_ANIME=['Q20650540','Q63952888','Q1107'];
+// 本の表紙は Apple Books の検索で探す（国立国会図書館サーチには表紙がないため）
+const ITUNES='https://itunes.apple.com/search';
 let workSearchId=0;
 function workKey(v) {
   return String(v||'').normalize('NFKC').replace(/[\s・:：\-－]/g,'').toLocaleLowerCase('ja')
@@ -563,12 +573,68 @@ async function searchAniList(query) {
   if(!r.ok) throw new Error(`AniList ${r.status}`);
   return parseAniList(await r.json())
 }
+function wikidataApi(params) {
+  return fetch(`${WIKIDATA}?${new URLSearchParams( { format:'json',origin:'*',...params })}`).then(r=> {
+    if(!r.ok) throw new Error(`Wikidata ${r.status}`);
+    return r.json()
+  })
+}
+function parseWikidata(entities,labels= {}) {
+  const ids=(entity,prop)=>(entity.claims?.[prop]||[]).map(x=>x.mainsnak?.datavalue?.value?.id).filter(Boolean);
+  return Object.values(entities||{}).map(entity=> {
+    const types=ids(entity,'P31'),title=entity.labels?.ja?.value||'';
+    const kind=Object.keys(WIKIDATA_KINDS).find(k=>types.some(t=>WIKIDATA_KINDS[k].includes(t)));
+    if(!title||!kind||types.some(t=>WIKIDATA_ANIME.includes(t))) return null;
+    const time=(entity.claims?.P577||[]).map(x=>x.mainsnak?.datavalue?.value?.time).find(Boolean);
+    // 映画・ドラマは監督（なければ脚本）、ゲームは開発元
+    const people=kind==='game'?ids(entity,'P178'):ids(entity,'P57').length?ids(entity,'P57'):ids(entity,'P58');
+    const name=id=>labels[id]?personName(labels[id]):'';
+    const author=people.map(name).find(Boolean)||'';
+    // 「テレビドラマシリーズ」「ビデオゲーム」のような、種類を言い直しただけのジャンルは除く
+    const genreTags=ids(entity,'P136').map(name).filter(x=>x&&!/^(テレビ)?(ドラマ|映画|ビデオゲーム|ゲーム)(シリーズ)?$/.test(x)).slice(0,3);
+    return {
+      source:'wikidata',kind,title,author,year:time?Number(time.slice(1,5))||null:null,
+      tags:[...new Set([author,...genreTags].filter(Boolean))].slice(0,WORK_TAGS),thumb:'',cover:''
+    }
+  }).filter(Boolean)
+}
+async function searchWikidata(query) {
+  const found=await wikidataApi( { action:'wbsearchentities',search:query,language:'ja',uselang:'ja',type:'item',limit:'12' });
+  const ids=(found.search||[]).map(x=>x.id);
+  if(!ids.length) return[];
+  const { entities }=await wikidataApi( { action:'wbgetentities',ids:ids.join('|'),props:'labels|claims',languages:'ja' });
+  // 監督・開発元・ジャンルの名前を、まとめて日本語で取る
+  const refs=new Set();
+  Object.values(entities||{}).forEach(entity=>['P57','P58','P178','P136'].forEach(prop=>(entity.claims?.[prop]||[]).slice(0,3).forEach(x=> { const id=x.mainsnak?.datavalue?.value?.id; if(id) refs.add(id); })));
+  const labels= {};
+  if(refs.size) {
+    try {
+      const named=await wikidataApi( { action:'wbgetentities',ids:[...refs].slice(0,50).join('|'),props:'labels',languages:'ja' });
+      Object.values(named.entities||{}).forEach(x=> { if(x.labels?.ja) labels[x.id]=x.labels.ja.value; })
+    }
+    catch {}
+  }
+  // 検索の並び（関連の強い順）を保つ
+  const order=new Map(ids.map((id,i)=>[id,i]));
+  return parseWikidata(Object.fromEntries(Object.entries(entities||{}).sort((a,b)=>order.get(a[0])-order.get(b[0]))),labels).slice(0,6)
+}
+// 題名が同じ（巻数などの続きは可）で、作者も同じ電子書籍の表紙だけを使う。違う本の表紙を付けないため
+function pickBookCover(results,work) {
+  const title=workKey(work.title),author=workKey(work.author);
+  const hit=(results||[]).find(r=>r.artworkUrl100&&workKey(r.trackName).startsWith(title)&&(author?workKey(r.artistName).replace(/[,，]/g,'')===author.replace(/[,，]/g,''):workKey(r.trackName)===title));
+  return hit?hit.artworkUrl100.replace(/\/\d+x\d+bb\./,'/600x600bb.'):''
+}
+async function findBookCover(work) {
+  const r=await fetch(`${ITUNES}?${new URLSearchParams( { term:[work.title,work.author].filter(Boolean).join(' '),country:'jp',media:'ebook',limit:'10' })}`);
+  if(!r.ok) throw new Error(`iTunes ${r.status}`);
+  return pickBookCover((await r.json()).results,work)
+}
 async function searchNdl(query) {
   const r=await fetch(`${NDL}?${new URLSearchParams( { title:query,mediatype:'books',cnt:'100' })}`);
   if(!r.ok) throw new Error(`NDL ${r.status}`);
   return parseNdl(await r.text(),query)
 }
-const WORK_KIND_NAMES= { anime:'アニメ',manga:'漫画',lightnovel:'ライトノベル',novel:'小説',book:'本' };
+const WORK_KIND_NAMES= { anime:'アニメ',manga:'漫画',lightnovel:'ライトノベル',novel:'小説',book:'本',movie:'映画',drama:'ドラマ',game:'ゲーム' };
 function closeWorkResults(message='') {
   workSearchId++;
   $('#work-results').hidden=true;
@@ -607,7 +673,7 @@ async function runWorkSearch() {
     return
   }
   $('#work-status').textContent='検索しています…';
-  const searches=[searchAniList(query),searchNdl(query)];
+  const searches=[searchAniList(query),searchWikidata(query),searchNdl(query)];
   let found=0,failed=0,left=searches.length;
   const status=()=> {
     if(left) return found?`${found}件の候補が見つかりました。ほかの候補も探しています…`:'検索しています…';
@@ -640,12 +706,14 @@ async function applyWork(work) {
   renderGenreChips();
   renderFormTags();
   closeWorkResults(`「${work.title}」の情報を入力しました。`);
-  // 自分で選んだ表紙は上書きしない
-  if(!work.cover||state.cover) return;
+  // 自分で選んだ表紙は上書きしない。本は、ここで表紙を探す
+  if(state.cover||!work.cover&&work.source!=='ndl') return;
   // 取得中に別の記録を開いたり、別の候補を選んだりしたら捨てる
   const token=workSearchId;
   try {
-    const cover=await fetchCover(work.cover);
+    const url=work.cover||await findBookCover(work);
+    if(!url) return;
+    const cover=await fetchCover(url);
     if(token===workSearchId&&!state.cover) {
       state.cover=cover;
       preview(cover)

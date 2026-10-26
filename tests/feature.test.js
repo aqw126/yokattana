@@ -447,7 +447,7 @@ test('自動入力: 両方の検索に失敗したら、そう伝える', async 
 
 test('自動入力: CSP で、検索先と表紙の取得先だけを許可している', async () => {
   const csp = (await indexHtml()).match(/Content-Security-Policy" content="([^"]+)"/)[1];
-  ['https://graphql.anilist.co', 'https://ndlsearch.ndl.go.jp', 'https://s4.anilist.co'].forEach(host => assert(csp.includes(host), host));
+  ['https://graphql.anilist.co', 'https://ndlsearch.ndl.go.jp', 'https://s4.anilist.co', 'https://www.wikidata.org', 'https://itunes.apple.com', 'https://*.mzstatic.com'].forEach(host => assert(csp.includes(host), host));
 });
 
 // ---- セキュリティの強化 ----
@@ -484,4 +484,66 @@ test('Trusted Types: 許可した処理は、XML と sw.js だけを通す', () 
   try { trusted.createHTML('<img src=x onerror=alert(1)>'); } catch { blocked++; }
   try { trusted.createScriptURL('https://evil.example/x.js'); } catch { blocked++; }
   eq(blocked, 2);
+});
+
+// ---- 映画・ドラマ・ゲーム（Wikidata）と、本の表紙（Apple Books） ----
+const wdClaim = (prop, ...ids) => ({ [prop]: ids.map(id => ({ mainsnak: { datavalue: { value: { id } } } })) });
+const WD_ENTITIES = {
+  Q1: { id: 'Q1', labels: { ja: { value: 'ショーシャンクの空に' } }, claims: { ...wdClaim('P31', 'Q11424'), ...wdClaim('P57', 'Q10'), ...wdClaim('P136', 'Q20', 'Q21'), P577: [{ mainsnak: { datavalue: { value: { time: '+1994-09-10T00:00:00Z' } } } }] } },
+  Q2: { id: 'Q2', labels: { ja: { value: '半沢直樹' } }, claims: { ...wdClaim('P31', 'Q5398426'), ...wdClaim('P58', 'Q11'), ...wdClaim('P136', 'Q22') } },
+  Q3: { id: 'Q3', labels: { ja: { value: 'ゼルダの伝説 ブレス オブ ザ ワイルド' } }, claims: { ...wdClaim('P31', 'Q7889'), ...wdClaim('P178', 'Q12'), ...wdClaim('P57', 'Q10') } },
+  Q4: { id: 'Q4', labels: { ja: { value: '千と千尋の神隠し' } }, claims: wdClaim('P31', 'Q20650540', 'Q29168811') },
+  Q5: { id: 'Q5', labels: { ja: { value: '第2シーズン' } }, claims: wdClaim('P31', 'Q3464665') },
+  Q6: { id: 'Q6', labels: { en: { value: 'No Japanese' } }, claims: wdClaim('P31', 'Q11424') }
+};
+const WD_LABELS = { Q10: 'フランク・ダラボン', Q11: '八津, 弘幸', Q12: '任天堂', Q20: 'ドラマ映画', Q21: '刑務所映画', Q22: 'テレビドラマシリーズ' };
+
+test('Wikidata: 映画・ドラマ・ゲームを見分け、アニメ・シーズン・日本語名のないものは除く', () => {
+  const found = parseWikidata(WD_ENTITIES, WD_LABELS);
+  eq(found.map(x => [x.title, x.kind, x.author, x.year]), [
+    ['ショーシャンクの空に', 'movie', 'フランク・ダラボン', 1994],
+    ['半沢直樹', 'drama', '八津弘幸', null],
+    ['ゼルダの伝説 ブレス オブ ザ ワイルド', 'game', '任天堂', null]
+  ]);
+  eq(found[0].tags, ['フランク・ダラボン', 'ドラマ映画', '刑務所映画']);
+  eq(found[1].tags, ['八津弘幸']);
+  eq([pickGenre('movie'), pickGenre('drama'), pickGenre('game')], ['映画', 'ドラマ', 'ゲーム']);
+});
+
+test('本の表紙: 題名と作者が合う電子書籍だけを選び、大きな画像にする', () => {
+  const results = [
+    { trackName: '火車', artistName: '富蘭納瑞.歐康納', artworkUrl100: 'https://is1-ssl.mzstatic.com/a/100x100bb.jpg' },
+    { trackName: '火車（新潮文庫）', artistName: '宮部みゆき', artworkUrl100: 'https://is1-ssl.mzstatic.com/b/100x100bb.jpg' }
+  ];
+  eq(pickBookCover(results, { title: '火車', author: '宮部みゆき' }), 'https://is1-ssl.mzstatic.com/b/600x600bb.jpg');
+  eq(pickBookCover(results, { title: '火車', author: '石倉久四郎' }), '');
+  eq(pickBookCover(results, { title: '火車', author: '' }), 'https://is1-ssl.mzstatic.com/a/600x600bb.jpg');
+  eq(pickBookCover([], { title: '火車', author: '宮部みゆき' }), '');
+});
+
+test('本の表紙: 本の候補を選ぶと Apple Books で表紙を探し、なければ何もしない', async () => {
+  resetApp();
+  openEditor();
+  const urls = [];
+  await withFetch(url => {
+    urls.push(url);
+    return url.startsWith(ITUNES) ? new Response(JSON.stringify({ results: [] })) : Promise.reject(new Error('unexpected'));
+  }, () => applyWork({ source: 'ndl', kind: 'novel', title: '火車', author: '宮部みゆき', tags: [], cover: '' }));
+  eq(urls.length, 1);
+  assert(urls[0].includes('media=ebook') && urls[0].includes('country=jp'), urls[0]);
+  eq([state.cover, $('#work-status').textContent], [null, '「火車」の情報を入力しました。']);
+  $('#dialog').close();
+});
+
+test('Wikidata: 検索から候補を作るまで（名前は2回目の問い合わせでまとめて取る）', async () => {
+  const calls = [];
+  const found = await withFetch(url => {
+    const params = new URL(url).searchParams;
+    calls.push(params.get('action') + ':' + (params.get('props') || ''));
+    if (params.get('action') === 'wbsearchentities') return new Response(JSON.stringify({ search: [{ id: 'Q3' }, { id: 'Q1' }] }));
+    if (params.get('props') === 'labels|claims') return new Response(JSON.stringify({ entities: { Q1: WD_ENTITIES.Q1, Q3: WD_ENTITIES.Q3 } }));
+    return new Response(JSON.stringify({ entities: Object.fromEntries(Object.entries(WD_LABELS).map(([id, v]) => [id, { id, labels: { ja: { value: v } } }])) }));
+  }, () => searchWikidata('test'));
+  eq(calls, ['wbsearchentities:', 'wbgetentities:labels|claims', 'wbgetentities:labels']);
+  eq(found.map(x => x.title), ['ゼルダの伝説 ブレス オブ ザ ワイルド', 'ショーシャンクの空に']);
 });
