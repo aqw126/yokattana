@@ -200,7 +200,61 @@ test('閲覧ページ: メモなしの記録には本文の欄が出ない', () 
   const root = document.createElement('div');
   renderShare(root, { payload: { title: 't', items: [{ title: 'A', genre: '本', rating: 3, tags: [], readAt: '2026-01-02' }] } });
   eq(root.querySelectorAll('.share-body').length, 0);
-  assert(root.textContent.includes('2026/1/2 に読んだ'), 'read date');
+  assert(root.textContent.includes('2026/1/2') && !root.textContent.includes('読んだ'), 'read date without a verb');
+});
+
+// 細かい模様の画像（縮めても小さくなりにくい）
+function noisyCover(width = 600, height = 900) {
+  const c = document.createElement('canvas');
+  c.width = width;
+  c.height = height;
+  const g = c.getContext('2d'), data = g.createImageData(width, height);
+  for (let i = 0; i < data.data.length; i++) data.data[i] = (i * 2654435761 >>> 13) & 255;
+  g.putImageData(data, 0, 0);
+  return c.toDataURL('image/png');
+}
+
+test('共有: 「表紙を含める」を選んだときだけ、表紙を小さな JPEG にして含める', async () => {
+  resetApp();
+  currentUser = { id: 'u1' };
+  const cover = noisyCover();
+  setItems([make({ title: '表紙あり', cover }), make({ title: '表紙なし' })]);
+  openShare(visible(), 't', 'c');
+  eq($('#share-covers').checked, false);
+  await createShare();
+  assert(!JSON.stringify([...fakeCloud.shares.values()][0].payload).includes('data:image'), 'no covers unless chosen');
+  fakeCloud.shares.clear();
+  openShare(visible(), 't', 'c');
+  $('#share-covers').checked = true;
+  await createShare();
+  const items = [...fakeCloud.shares.values()][0].payload.items, withCover = items.find(x => x.title === '表紙あり');
+  assert(/^data:image\/jpeg;base64,/.test(withCover.cover) && withCover.cover.length <= SHARE_COVER_MAX, 'small jpeg');
+  eq(items.find(x => x.title === '表紙なし').cover, undefined);
+  openShare(visible(), 't', 'c');
+  eq($('#share-covers').checked, false);
+  $('#share-dialog').close();
+});
+
+test('共有: 100件に表紙を含めても、共有の上限（1MB）に収まる', async () => {
+  resetApp();
+  const cover = noisyCover();
+  const items = Array.from({ length: SHARE_LIMIT }, (_, i) => make({ title: 'T' + i, notes: 'あ'.repeat(500), cover }));
+  const payload = await addShareCovers(sharePayload(items, { title: 't', criteria: 'c', mode: 'all' }), items);
+  assert(payload.items.every(x => x.cover), 'every item keeps a cover');
+  assert(new Blob([JSON.stringify(payload)]).size < 1000000, 'under the 1MB limit');
+});
+
+test('閲覧ページ: 表紙は JPEG の data URL だけを表示し、それ以外は頭文字にする', () => {
+  const root = document.createElement('div');
+  renderShare(root, { payload: { title: 't', items: [
+    { title: '火車', genre: '本', rating: 4.6, tags: [], cover: 'data:image/jpeg;base64,/9j/AAAA' },
+    { title: '外の画像', genre: '本', rating: 4, tags: [], cover: 'https://evil.example/x.jpg' },
+    { title: '図形', genre: '本', rating: 4, tags: [], cover: 'data:image/svg+xml;base64,AAAA' }
+  ] } });
+  const arts = [...root.querySelectorAll('.share-art')];
+  eq(arts.map(a => a.querySelector('img')?.getAttribute('src') || a.textContent), ['data:image/jpeg;base64,/9j/AAAA', '外', '図']);
+  eq([...root.querySelectorAll('article')].map(a => a.classList.contains('top')), [true, false, false]);
+  eq(root.querySelector('.share-stars').getAttribute('aria-label'), '評価 4.6');
 });
 
 test('閲覧ページ: 共有ページの設定（検索除外・参照元なし・CSP）', async () => {
