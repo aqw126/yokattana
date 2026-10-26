@@ -102,3 +102,51 @@ $$;
 
 revoke all on function public.get_share(text) from public;
 grant execute on function public.get_share(text) to anon, authenticated;
+
+-- 記録の上限と、更新日時の補正。Supabase の SQL Editor で、この下の部分を一度だけ実行する。
+-- ・1件は 300KB まで（表紙は端末で 150KB 以内に縮小している）
+-- ・1人あたり 5000件、合計 100MB まで（無料枠 500MB を、1人に使い切られないため）
+-- ・未来の更新日時（端末の時計のずれ）は、今の時刻に直す。同期は新しい方が勝つので、未来の日時の記録は、二度と上書きできなくなるため
+alter table public.library_items drop constraint if exists library_items_payload_size;
+alter table public.library_items add constraint library_items_payload_size check (pg_column_size(payload) < 300000) not valid;
+
+create index if not exists library_items_user_id_idx on public.library_items (user_id);
+
+create or replace function public.guard_library_item()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+declare
+  stamp timestamptz;
+begin
+  begin
+    stamp := (new.payload->>'updatedAt')::timestamptz;
+  exception when others then
+    stamp := null;
+  end;
+  if stamp is null or stamp > now() + interval '5 minutes' then
+    stamp := now();
+    new.payload := jsonb_set(new.payload, '{updatedAt}', to_jsonb(to_char(stamp at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')));
+  end if;
+  new.updated_at := stamp;
+
+  if (select count(*) from public.library_items where user_id = new.user_id and id <> new.id) >= 5000 then
+    raise exception 'library_limit: too many items';
+  end if;
+  if (select coalesce(sum(pg_column_size(payload)), 0) from public.library_items where user_id = new.user_id and id <> new.id)
+     + pg_column_size(new.payload) > 100000000 then
+    raise exception 'library_limit: too much data';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists library_items_guard on public.library_items;
+create trigger library_items_guard before insert or update on public.library_items
+for each row execute function public.guard_library_item();
+
+-- すでに未来の更新日時で保存されている記録を、今の時刻に直す
+update public.library_items
+set payload = jsonb_set(payload, '{updatedAt}', to_jsonb(to_char(now() at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')))
+where updated_at > now() + interval '5 minutes';

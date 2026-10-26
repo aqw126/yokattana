@@ -10,6 +10,7 @@ window.fakeCloud = (() => {
       cloud.fail = false;
       cloud.rpcError = null;
       cloud.insertError = null;
+      cloud.upsertError = null;
       cloud.shares.clear();
       cloud.calls = [];
     },
@@ -41,6 +42,7 @@ window.fakeCloud = (() => {
         upsert: async rows => {
           cloud.calls.push(['upsert', rows.length]);
           if (cloud.fail) return { error: { message: 'network' } };
+          if (cloud.upsertError) return { error: cloud.upsertError };
           rows.forEach(row => cloud.rows.set(row.id, row));
           return { error: null };
         },

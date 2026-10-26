@@ -139,6 +139,8 @@ Supabase は、PostgreSQL を中心にした、オープンソースの BaaS で
 | CSV の数式実行 | `=` `+` `-` `@` で始まるセルに印 | `app.js:669`（`csvCell`） |
 | 乱用 | 共有は1人50件、100件まで、1MB未満 | `supabase-schema.sql:49`〜 |
 | 別アカウントへの混入 | 端末の所有者を記録し、違えば破棄 | `app.js:131`（`finishLogin`） |
+| 容量の使い切り | 記録は1件300KB（check 制約）、1人5000件・合計100MB（トリガー）まで。上限に達したら、端末に保存したまま一度だけ知らせる | `supabase-schema.sql` の `guard_library_item`、`app.js` の `syncItems` |
+| 時計のずれ | 未来の更新日時は、端末（`notFuture`）とクラウド（`guard_library_item`）の両方で今に直す。5分までのずれは許す | `app.js` の `normalizeItem`、`supabase-schema.sql` |
 
 ---
 

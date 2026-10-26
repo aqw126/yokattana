@@ -399,3 +399,53 @@ test('後片付け', () => {
     t.fn = async () => { resetApp(); return fn(); };
   });
 })();
+
+// ---- 上限と、時計のずれ ----
+test('normalizeItem: 未来の更新日時・追加日時は今に直す。少しのずれは残す', () => {
+  const before = Date.now();
+  const item = normalizeItem({ title: 'a', createdAt: '2099-01-01T00:00:00.000Z', updatedAt: '2099-01-01T00:00:00.000Z' });
+  assert(new Date(item.updatedAt) >= before && new Date(item.updatedAt) <= Date.now(), 'updatedAt clamped');
+  assert(new Date(item.createdAt) <= Date.now(), 'createdAt clamped');
+  const near = new Date(Date.now() + 60000).toISOString();
+  eq(normalizeItem({ title: 'a', updatedAt: near }).updatedAt, near);
+});
+
+test('同期: 未来の日時で届いた記録も、あとの編集で上書きできる', () => {
+  const id = uid();
+  const [remote] = [normalizeItem({ id, title: '未来', updatedAt: '2099-01-01T00:00:00.000Z' })];
+  const edited = { ...remote, title: '直した', updatedAt: new Date(Date.now() + 1000).toISOString() };
+  eq(mergeItems([remote], [edited])[0].title, '直した');
+});
+
+test('scaleImage: 細かい画像でも、表紙は COVER_LIMIT 以内に収める', async () => {
+  const c = document.createElement('canvas');
+  c.width = 1200; c.height = 1600;
+  const g = c.getContext('2d'), data = g.createImageData(c.width, c.height);
+  for (let i = 0; i < data.data.length; i++) data.data[i] = (i * 2654435761 >>> 7) & 255;
+  g.putImageData(data, 0, 0);
+  const raw = c.toDataURL('image/png');
+  assert(raw.length > COVER_LIMIT, 'source must be large');
+  const small = await scaleImage(raw);
+  assert(small.length <= COVER_LIMIT && COVER.test(small), `got ${small.length}`);
+});
+
+test('同期: クラウドの上限に達したら、同期待ちに残し、一度だけ知らせる', async () => {
+  resetApp();
+  limitWarned = false;
+  currentUser = { id: 'u1' };
+  const item = make({ title: '多すぎ' });
+  setItems([item]);
+  fakeCloud.upsertError = { message: 'library_limit: too many items', code: 'P0001' };
+  const shown = [];
+  const original = window.showToast;
+  showToast = message => shown.push(message);
+  try {
+    eq(await syncItems([item]), false);
+    eq(await syncItems([item]), false);
+  } finally { showToast = original; }
+  assert(pending.has(item.id), 'kept pending');
+  eq(shown.length, 1);
+  assert(shown[0].includes('上限'), 'mentions the limit');
+  fakeCloud.upsertError = null;
+  currentUser = null;
+});

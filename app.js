@@ -3,7 +3,7 @@ const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const COVER=/^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+$/;
 const TRASH_DAYS=30,CARD_PAGE=24,TOMBSTONE_DAYS=90,SYNC_CHUNK=20,PAGE_SIZE=100,COVER_LIMIT=150000;
 const cloud=window.supabase?.createClient(window.SUPABASE_CONFIG?.url,window.SUPABASE_CONFIG?.publishableKey);
-let shownLimit=CARD_PAGE,lastView='',picking=false,currentUser=null,flushing=false,shrinking=false,dirty=false;
+let shownLimit=CARD_PAGE,lastView='',picking=false,currentUser=null,flushing=false,shrinking=false,dirty=false,limitWarned=false;
 
 // 旧名称で保存されたデータを引き継ぐ
 try {
@@ -70,9 +70,14 @@ async function syncItems(items) {
         if(state.items.find(x=>x.id===item.id)?.updatedAt===item.updatedAt) pending.delete(item.id)
       })
     }
-    catch {
+    catch(error) {
       chunk.forEach(item=>pending.add(item.id));
-      ok=false
+      ok=false;
+      // クラウドの上限（supabase-schema.sql の guard_library_item）に達したら、一度だけ知らせる
+      if(!limitWarned&&(String(error?.message).includes('library_limit')||error?.code==='23514')) {
+        limitWarned=true;
+        showToast('クラウドの保存上限（1人5000件・合計100MB、1件300KB）に達したため、同期できませんでした。この端末には保存されています。不要な記録や表紙画像を減らしてください。')
+      }
     }
   }
   savePending();
@@ -196,6 +201,11 @@ function validDate(v,fallback) {
   const t=new Date(v);
   return typeof v==='string'&&!isNaN(t)?t.toISOString():fallback
 }
+// 未来の日時（時計のずれた端末で保存したもの）は今に直す。同期は新しい方が勝つので、残すと二度と上書きできなくなる
+const CLOCK_SKEW=5*60000;
+function notFuture(iso) {
+  return new Date(iso)>Date.now()+CLOCK_SKEW?new Date().toISOString():iso
+}
 function hasContent(x) {
   return!!(x.title||x.notes||x.quote||x.cover||x.tags.length)
 }
@@ -224,7 +234,7 @@ function normalizeItem(raw) {
   if(!raw||typeof raw!=='object') return null;
   const deleted=raw.deleted===true,title=String(raw.title??'').trim();
   if(!deleted&&!title) return null;
-  const createdAt=validDate(raw.createdAt,new Date().toISOString());
+  const createdAt=notFuture(validDate(raw.createdAt,new Date().toISOString()));
   return {
     id:typeof raw.id==='string'&&UUID.test(raw.id)?raw.id:crypto.randomUUID(),
     title,genre:String(raw.genre??'').trim()||'未分類',
@@ -234,7 +244,7 @@ function normalizeItem(raw) {
     quote:String(raw.quote??'').trim().slice(0,1000),
     spoiler:raw.spoiler===true,
     cover:typeof raw.cover==='string'&&COVER.test(raw.cover)?raw.cover:null,
-    readAt:validDay(raw.readAt),createdAt,updatedAt:validDate(raw.updatedAt,createdAt),deleted
+    readAt:validDay(raw.readAt),createdAt,updatedAt:notFuture(validDate(raw.updatedAt,createdAt)),deleted
   }
 }
 function load() {
@@ -258,17 +268,23 @@ function save() {
 function liveItems() {
   return state.items.filter(x=>!x.deleted)
 }
+// 長辺600pxのJPEGに縮小する。細かい画像で COVER_LIMIT を超えるときは、さらに小さく・粗くする（クラウドは1件300KBまで）
 function scaleImage(src) {
   return new Promise((resolve,reject)=> {
     const img=new Image();
     img.onload=()=> {
-      const scale=Math.min(1,600/Math.max(img.width,img.height)),c=document.createElement('canvas'),g=c.getContext('2d');
-      c.width=Math.max(1,Math.round(img.width*scale));
-      c.height=Math.max(1,Math.round(img.height*scale));
-      g.fillStyle='#fff';
-      g.fillRect(0,0,c.width,c.height);
-      g.drawImage(img,0,0,c.width,c.height);
-      resolve(c.toDataURL('image/jpeg',0.8))
+      let url='';
+      for(const [size,quality] of [[600,0.8],[600,0.6],[450,0.6],[300,0.5]]) {
+        const scale=Math.min(1,size/Math.max(img.width,img.height)),c=document.createElement('canvas'),g=c.getContext('2d');
+        c.width=Math.max(1,Math.round(img.width*scale));
+        c.height=Math.max(1,Math.round(img.height*scale));
+        g.fillStyle='#fff';
+        g.fillRect(0,0,c.width,c.height);
+        g.drawImage(img,0,0,c.width,c.height);
+        url=c.toDataURL('image/jpeg',quality);
+        if(url.length<=COVER_LIMIT) break
+      }
+      resolve(url)
     };
     img.onerror=()=>reject(new Error('画像を読み込めませんでした。'));
     img.src=src
