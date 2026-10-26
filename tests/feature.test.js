@@ -755,3 +755,43 @@ test('ネタバレの部分: ボタンをもう一度押すと解除できる', 
   assert($('#spoiler-hint').textContent.includes('解除しました'), 'says it was removed');
   $('#dialog').close();
 });
+
+// ---- 評価で絞り込む ----
+test('評価の絞り込み: 0.5刻みの帯に分ける（境目と小数の誤差）', () => {
+  eq([5, 4.5, 4.4, 4.0, 3.9, 3.5, 3.4, 3.0, 4.1 + 0.3].map(ratingBand), ['4.5', '4.5', '4.0', '4.0', '3.5', '3.5', '3.0', '3.0', '4.0']);
+});
+
+test('評価の絞り込み: 選んだ帯だけを出し、ほかの絞り込みや並べ替えと組み合わせられる', () => {
+  resetApp();
+  setItems([
+    make({ title: '傑作', genre: '本', rating: 4.8 }),
+    make({ title: '良作A', genre: '本', rating: 4.2, readAt: '2026-01-01' }),
+    make({ title: '良作B', genre: '漫画', rating: 4.0, readAt: '2026-03-01' }),
+    make({ title: 'ふつう', genre: '本', rating: 3.6 })
+  ]);
+  const boxes = () => [...document.querySelectorAll('#rating-filter .multi-panel label')].map(l => l.textContent);
+  eq(boxes(), ['★4.5〜5.0（1件）', '★4.0〜4.4（2件）', '★3.5〜3.9（1件）', '★3.0〜3.4（0件）']);
+  document.querySelector('#rating-filter input[value="4.0"]').click();
+  $('#sort').value = 'read';
+  eq(visible().map(x => x.title), ['良作B', '良作A']);
+  eq($('#rating-filter .multi-value').textContent, '★4.0〜4.4');
+  assert($('#heading').textContent.startsWith('検索結果 (2)'), $('#heading').textContent);
+  filters.genre.add('本');
+  eq(visible().map(x => x.title), ['良作A']);
+  eq(criteriaText(), 'ジャンル：本 / 評価：★4.0〜4.4');
+  document.querySelector('#rating-filter input[value="4.5"]').click();
+  eq(visible().map(x => x.title).sort(), ['傑作', '良作A']);
+  eq($('#rating-filter .multi-value').textContent, '★4.5〜5.0、★4.0〜4.4');
+  document.querySelector('#rating-filter .multi-clear').click();
+  eq(filters.rating.size, 0);
+  $('#sort').value = 'new';
+});
+
+test('評価の絞り込み: 件数は記録を変えると更新され、選んだ帯は残る', () => {
+  resetApp();
+  setItems([make({ rating: 4.2 })]);
+  document.querySelector('#rating-filter input[value="4.0"]').click();
+  setItems([...state.items, make({ rating: 4.3 })]);
+  eq(document.querySelector('#rating-filter input[value="4.0"]').parentElement.textContent, '★4.0〜4.4（2件）');
+  assert(document.querySelector('#rating-filter input[value="4.0"]').checked, 'still selected');
+});
