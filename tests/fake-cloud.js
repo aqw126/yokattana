@@ -13,6 +13,41 @@ window.fakeCloud = (() => {
       cloud.upsertError = null;
       cloud.shares.clear();
       cloud.calls = [];
+      cloud.files.clear();
+      cloud.bucketMissing = false;
+    },
+    // Storage（表紙の置き場所）の偽物。path -> { blob, created_at }
+    files: new Map(),
+    bucketMissing: false,
+    storage: {
+      from() {
+        const missing = () => ({ data: null, error: { message: 'Bucket not found', statusCode: '404', status: 400 } });
+        return {
+          upload: async (path, blob) => {
+            cloud.calls.push(['upload', path]);
+            if (cloud.bucketMissing) return missing();
+            if (cloud.files.has(path)) return { data: null, error: { message: 'The resource already exists', statusCode: '409', status: 400 } };
+            cloud.files.set(path, { blob, created_at: new Date().toISOString() });
+            return { data: { path }, error: null };
+          },
+          download: async path => {
+            cloud.calls.push(['download', path]);
+            if (cloud.bucketMissing) return missing();
+            const file = cloud.files.get(path);
+            return file ? { data: file.blob, error: null } : { data: null, error: { message: 'Object not found', statusCode: '404', status: 400 } };
+          },
+          list: async (prefix, { limit = 100, offset = 0 } = {}) => {
+            if (cloud.bucketMissing) return missing();
+            const names = [...cloud.files.keys()].filter(k => k.startsWith(prefix + '/')).map(k => k.slice(prefix.length + 1)).sort();
+            return { data: names.slice(offset, offset + limit).map(name => ({ name, created_at: cloud.files.get(prefix + '/' + name).created_at })), error: null };
+          },
+          remove: async paths => {
+            cloud.calls.push(['remove', paths.length]);
+            paths.forEach(path => cloud.files.delete(path));
+            return { data: [], error: null };
+          }
+        };
+      }
     },
     auth: {
       getSession: async () => ({ data: { session: null } }),

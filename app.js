@@ -77,7 +77,7 @@ async function syncItems(items) {
   for(let i=0;i<items.length;i+=SYNC_CHUNK) {
     const chunk=items.slice(i,i+SYNC_CHUNK);
     try {
-      const rows=await Promise.all(chunk.map(async item=>( { id:item.id,user_id:currentUser.id,payload:await withInlineCover(item),updated_at:item.updatedAt })));
+      const rows=await Promise.all(chunk.map(cloudRow));
       const { error }=await cloud.from('library_items').upsert(rows);
       if(error) throw error;
       chunk.forEach(item=> {
@@ -129,8 +129,14 @@ async function loadCloudItems() {
   let rows;
   try { rows=await fetchRemoteItems(); }
   catch { updateSyncStatus(true); return; }
-  const remote=new Map();
-  rows.forEach(row=> { const item=normalizeItem(row.payload); if(item) remote.set(item.id,item); });
+  // 以前の形（表紙を記録に埋め込んだもの）の記録は、あとで新しい形にして送り直す
+  const remote=new Map(),upgrade=new Set();
+  rows.forEach(row=> {
+    const item=normalizeItem(row.payload);
+    if(!item) return;
+    remote.set(item.id,item);
+    if(row.payload?.format!==2) upgrade.add(item.id)
+  });
   const cutoff=Date.now()-TOMBSTONE_DAYS*86400000;
   const merged=compactTrash(mergeItems(state.items,[...remote.values()]));
   // 十分古い削除記録は、端末とクラウドの両方から片付ける
@@ -142,13 +148,18 @@ async function loadCloudItems() {
   }
   await syncItems(state.items.filter(item=> { const r=remote.get(item.id); return !r||isNewer(item,r); }));
   render();
-  tidyCovers()
+  await tidyCovers();
+  // 表紙を Storage へ移して、新しい形で送り直す（更新日時は変えない。途中で止まっても、次のログインで続きから）
+  if(storeMode==='idb'&&upgrade.size&&await coverBucketReady().catch(()=>false)) await syncItems(state.items.filter(x=>upgrade.has(x.id)));
+  collectCloudCovers().catch(()=> {})
 }
 function setAuthMessage(message='') {
   $('#auth-message').textContent=message
 }
 async function finishLogin(user) {
   currentUser=user;
+  coverBucketMissing=false;
+  uploadedCovers.clear();
   if($('#auth-dialog').open) $('#auth-dialog').close();
   $('#auth-button').textContent='ログアウト';
   // 別アカウントのローカルデータを、ログインしたアカウントへ混ぜない
@@ -381,11 +392,98 @@ async function storeCover(dataUrl) {
   if(storeMode!=='idb') return dataUrl;
   return { hash:await LocalStore.putCover(dataUrlToBlob(dataUrl)) }
 }
+// 表紙の置き場所（Supabase Storage）。covers/<ユーザーID>/<ハッシュ>。記録には { hash } だけを入れる
+const COVER_BUCKET='covers',uploadedCovers=new Set(),downloadingCovers=new Map();
+// supabase-schema.sql の Storage の部分をまだ実行していないときは、以前と同じく表紙を記録に埋め込んで送る
+let coverBucketMissing=false;
+function coverPath(hash) {
+  return `${currentUser.id}/${hash}`
+}
+function isBucketMissing(error) {
+  return /bucket not found/i.test(String(error?.message))
+}
+function isAlreadyStored(error) {
+  return String(error?.statusCode)==='409'||error?.status===409||/already exists|duplicate/i.test(String(error?.message))
+}
+// 表紙の画像を返す。手元になければクラウドから取ってきて、中身がハッシュと合うのを確かめてから手元に置く
+async function getCoverBlob(hash) {
+  if(storeMode!=='idb') return null;
+  const local=await LocalStore.getCover(hash).catch(()=>null);
+  if(local) return local;
+  if(!currentUser||!cloud?.storage||coverBucketMissing) return null;
+  if(!downloadingCovers.has(hash)) {
+    downloadingCovers.set(hash,(async()=> {
+      try {
+        const { data,error }=await cloud.storage.from(COVER_BUCKET).download(coverPath(hash));
+        if(error||!data||await LocalStore.hashOf(data)!==hash) return null;
+        await LocalStore.putCover(data);
+        return data
+      }
+      catch { return null; }
+      finally { downloadingCovers.delete(hash); }
+    })())
+  }
+  return downloadingCovers.get(hash)
+}
+// 表紙をクラウドに置く。置けた（またはもうある）なら true、Storage がまだ用意されていなければ false
+async function uploadCover(hash) {
+  if(uploadedCovers.has(hash)) return true;
+  if(coverBucketMissing) return false;
+  const blob=await LocalStore.getCover(hash).catch(()=>null);
+  // 手元にないのは、クラウドから来て、まだ取ってきていない表紙（クラウドにはある）
+  if(!blob) return true;
+  const { error }=await cloud.storage.from(COVER_BUCKET).upload(coverPath(hash),blob, { contentType:blob.type||'image/jpeg',upsert:false });
+  if(error&&isBucketMissing(error)) { coverBucketMissing=true; return false; }
+  if(error&&!isAlreadyStored(error)) throw error;
+  uploadedCovers.add(hash);
+  return true
+}
+// クラウドに送る形。表紙は先に Storage へ置き、記録には { hash } だけを入れる（format: 2 が新しい形の印）
+async function cloudRow(item) {
+  let payload= { ...item,format:2 };
+  if(payload.cover&&typeof payload.cover==='object'&&!await uploadCover(payload.cover.hash)) payload=await withInlineCover(payload);
+  return { id:item.id,user_id:currentUser.id,payload,updated_at:item.updatedAt }
+}
+async function coverBucketReady() {
+  if(coverBucketMissing||!cloud?.storage) return false;
+  const { error }=await cloud.storage.from(COVER_BUCKET).list(currentUser.id, { limit:1 });
+  if(error&&isBucketMissing(error)) coverBucketMissing=true;
+  return!error
+}
+async function listCloudCovers() {
+  const files=[];
+  for(let offset=0;;offset+=1000) {
+    const { data,error }=await cloud.storage.from(COVER_BUCKET).list(currentUser.id, { limit:1000,offset });
+    if(error) throw error;
+    files.push(...data);
+    if(data.length<1000) return files
+  }
+}
+// どの記録（ごみ箱も含む）からも使われていない表紙を、クラウドから消す。
+// ほかの端末が置いたばかりで、まだ記録が届いていない表紙を消さないよう、1日以上たったものだけ
+async function collectCloudCovers() {
+  if(!currentUser||storeMode!=='idb'||!await coverBucketReady()) return;
+  const used=new Set(state.items.map(x=>x.cover?.hash).filter(Boolean)),before=Date.now()-86400000;
+  const gone=(await listCloudCovers()).filter(f=>COVER_REF.test(f.name)&&!used.has(f.name)&&new Date(f.created_at).getTime()<before).map(f=>coverPath(f.name));
+  for(let i=0;i<gone.length;i+=100) await cloud.storage.from(COVER_BUCKET).remove(gone.slice(i,i+100))
+}
+// アカウント削除の前に、クラウドの表紙をすべて消す（データベースの削除では、Storage のファイルは消えないため）
+async function removeAllCloudCovers() {
+  if(!cloud?.storage) return;
+  let files;
+  try { files=await listCloudCovers(); }
+  catch(error) { if(isBucketMissing(error)) return; throw error; }
+  const paths=files.map(f=>coverPath(f.name));
+  for(let i=0;i<paths.length;i+=100) {
+    const { error }=await cloud.storage.from(COVER_BUCKET).remove(paths.slice(i,i+100));
+    if(error) throw error
+  }
+}
 // 表紙を画面に出す。IndexedDB の表紙は、読み出した Blob の URL を使い回す
 const coverUrls=new Map();
 async function loadCoverUrl(hash) {
   if(coverUrls.has(hash)) return coverUrls.get(hash);
-  const blob=storeMode==='idb'?await LocalStore.getCover(hash).catch(()=>null):null;
+  const blob=await getCoverBlob(hash);
   if(!blob) return'';
   const url=URL.createObjectURL(blob);
   coverUrls.set(hash,url);
@@ -402,10 +500,11 @@ function showCover(img,cover,onMissing) {
     else onMissing?.()
   })
 }
-// 書き出しと同期では、表紙を以前と同じ data URL の形に戻す（古いバックアップ・ほかの端末と同じ形のまま）
+// 書き出しでは、表紙を以前と同じ data URL の形に戻す（古いバックアップと同じ形のまま）。
+// Storage がまだ用意されていないときの同期でも使う
 async function withInlineCover(item) {
   if(!item.cover||typeof item.cover==='string') return item;
-  const blob=storeMode==='idb'?await LocalStore.getCover(item.cover.hash).catch(()=>null):null;
+  const blob=await getCoverBlob(item.cover.hash);
   return { ...item,cover:blob?await blobToDataUrl(blob):null }
 }
 // data URL の表紙（読み込み・クラウド・移行前の記録）を IndexedDB に移す。大きすぎるものは縮小してから
@@ -1062,7 +1161,8 @@ function clearLocalRecords() {
   if(storeMode==='idb') {
     persist(()=>Promise.all([LocalStore.clearRecords(),LocalStore.deleteMeta('legacyBackup')]),true);
     coverUrls.forEach(url=>URL.revokeObjectURL(url));
-    coverUrls.clear()
+    coverUrls.clear();
+    uploadedCovers.clear()
   }
   else if(storeMode==='legacy') saveLegacy()
 }
@@ -1376,6 +1476,11 @@ async function deleteAccount() {
   if(!currentUser) return;
   if(!confirm('クラウド上のアカウントと、同期した記録をすべて削除します。この端末の記録も消え、元に戻せません。先にバックアップを書き出しましたか？ 続けますか？')) return;
   if(prompt('本当に削除するには「削除」と入力してください。')!=='削除') return;
+  try { await removeAllCloudCovers(); }
+  catch {
+    alert('クラウドの表紙画像を削除できませんでした。通信状況を確認して、もう一度お試しください。');
+    return
+  }
   try {
     const { error }=await cloud.rpc('delete_my_account');
     if(error) throw error

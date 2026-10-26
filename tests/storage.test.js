@@ -69,7 +69,7 @@ test('正規化: 表紙の参照を受け付け、不正なハッシュは捨て
   eq(normalizeItem({ title: 'a', mood: 'x' }).title, 'a');
 });
 
-test('表紙: 保存すると参照になり、カードには画像として出る。書き出しと同期では data URL に戻す', async () => {
+test('表紙: 保存すると参照になり、カードには画像として出る。書き出しでは data URL に戻し、同期では Storage に置く', async () => {
   await freshStore();
   const cover = await storeCover(PNG);
   assert(COVER_REF.test(cover.hash), 'reference');
@@ -81,7 +81,8 @@ test('表紙: 保存すると参照になり、カードには画像として出
   eq((await withInlineCover(state.items[0])).cover, PNG);
   currentUser = { id: 'u1' };
   await syncItems(state.items);
-  eq(fakeCloud.rows.get(state.items[0].id).payload.cover, PNG);
+  eq(fakeCloud.rows.get(state.items[0].id).payload.cover, cover);
+  assert(fakeCloud.files.has(`u1/${cover.hash}`), 'cover placed in Storage');
   currentUser = null;
 });
 
@@ -154,4 +155,110 @@ test('ごみ箱: 中身を消すときは、知らない項目も残さない', 
   const emptied = emptyOf(normalizeItem({ title: 'a', notes: 'n', mood: '秘密の気持ち' }), new Date().toISOString());
   eq('mood' in emptied, false);
   eq([emptied.title, emptied.deleted], ['', true]);
+});
+
+// ---- 表紙の置き場所（Supabase Storage） ----
+async function signedIn() {
+  await freshStore();
+  currentUser = { id: '11111111-1111-1111-1111-111111111111' };
+  coverBucketMissing = false;
+  uploadedCovers.clear();
+  coverUrls.clear();
+}
+const uidPath = hash => `11111111-1111-1111-1111-111111111111/${hash}`;
+
+test('Storage: 同期すると、表紙を先に置き、記録には { hash } と新しい形の印だけを送る', async () => {
+  await signedIn();
+  const cover = await storeCover(PNG);
+  const item = make({ title: '表紙', cover });
+  setItems([item]);
+  await syncItems([item]);
+  const row = fakeCloud.rows.get(item.id);
+  eq([row.payload.cover, row.payload.format], [cover, 2]);
+  assert(!JSON.stringify(row.payload).includes('data:image'), 'no image inside the record');
+  const calls = fakeCloud.calls.map(c => c[0]);
+  assert(calls.indexOf('upload') < calls.indexOf('upsert'), 'cover first, then the record');
+  // 同じ表紙を2回目に送るときは、置き直さない
+  await syncItems([item]);
+  eq(fakeCloud.calls.filter(c => c[0] === 'upload').length, 1);
+  currentUser = null;
+});
+
+test('Storage: もう置いてある表紙（409）は、置けたものとして扱う', async () => {
+  await signedIn();
+  const cover = await storeCover(PNG);
+  fakeCloud.files.set(uidPath(cover.hash), { blob: new Blob(['x']), created_at: new Date().toISOString() });
+  const item = make({ cover });
+  setItems([item]);
+  eq(await syncItems([item]), true);
+  eq(pending.size, 0);
+  currentUser = null;
+});
+
+test('Storage: まだ用意されていない（SQL を実行する前）ときは、以前と同じく表紙を埋め込んで送る', async () => {
+  await signedIn();
+  fakeCloud.bucketMissing = true;
+  const item = make({ cover: await storeCover(PNG) });
+  setItems([item]);
+  eq(await syncItems([item]), true);
+  eq(fakeCloud.rows.get(item.id).payload.cover, PNG);
+  eq(coverBucketMissing, true);
+  currentUser = null;
+});
+
+test('Storage: ほかの端末の表紙は、表示するときに取ってきて、中身を確かめてから手元に置く', async () => {
+  await signedIn();
+  const blob = dataUrlToBlob(PNG), hash = await LocalStore.hashOf(blob);
+  fakeCloud.files.set(uidPath(hash), { blob, created_at: new Date().toISOString() });
+  setItems([make({ title: '取得', cover: { hash } })]);
+  const img = document.querySelector('#grid article img');
+  for (let i = 0; i < 50 && !img.src; i++) await new Promise(r => setTimeout(r, 20));
+  assert(img.src.startsWith('blob:'), 'shown');
+  assert(await LocalStore.getCover(hash), 'kept on this device');
+  // 中身がハッシュと合わない画像は使わない
+  const bad = 'c'.repeat(64);
+  fakeCloud.files.set(uidPath(bad), { blob: new Blob(['偽物'], { type: 'image/png' }), created_at: new Date().toISOString() });
+  eq(await getCoverBlob(bad), null);
+  eq(await LocalStore.getCover(bad), null);
+  currentUser = null;
+});
+
+test('Storage: ログイン時、以前の形の記録は表紙を移して新しい形で送り直す（更新日時は変えない）', async () => {
+  await signedIn();
+  const old = make({ title: '以前の形', cover: PNG, updatedAt: ago(3) });
+  fakeCloud.rows.set(old.id, { id: old.id, payload: old });
+  await loadCloudItems();
+  const row = fakeCloud.rows.get(old.id);
+  assert(COVER_REF.test(row.payload.cover.hash), 'record now holds a reference');
+  eq([row.payload.format, row.payload.updatedAt], [2, old.updatedAt]);
+  assert(fakeCloud.files.has(uidPath(row.payload.cover.hash)), 'cover moved to Storage');
+  // 2回目のログインでは、送り直さない
+  const upserts = fakeCloud.calls.filter(c => c[0] === 'upsert').length;
+  await loadCloudItems();
+  eq(fakeCloud.calls.filter(c => c[0] === 'upsert').length, upserts);
+  currentUser = null;
+});
+
+test('Storage: 使われていない表紙は、1日以上たったものだけをクラウドから消す', async () => {
+  await signedIn();
+  const used = await storeCover(PNG);
+  setItems([make({ cover: used })]);
+  const old = new Date(Date.now() - 2 * DAY).toISOString(), fresh = new Date().toISOString();
+  fakeCloud.files.set(uidPath(used.hash), { blob: new Blob(['u']), created_at: old });
+  fakeCloud.files.set(uidPath('d'.repeat(64)), { blob: new Blob(['o']), created_at: old });
+  fakeCloud.files.set(uidPath('e'.repeat(64)), { blob: new Blob(['n']), created_at: fresh });
+  await collectCloudCovers();
+  eq([...fakeCloud.files.keys()].sort(), [uidPath(used.hash), uidPath('e'.repeat(64))].sort());
+  currentUser = null;
+});
+
+test('Storage: アカウントを削除するときは、先にクラウドの表紙をすべて消す', async () => {
+  await signedIn();
+  fakeCloud.files.set(uidPath('f'.repeat(64)), { blob: new Blob(['x']), created_at: new Date().toISOString() });
+  window.prompt = () => '削除';
+  await deleteAccount();
+  eq(fakeCloud.files.size, 0);
+  const calls = fakeCloud.calls.map(c => c[0] === 'rpc' ? c[1] : c[0]);
+  assert(calls.indexOf('remove') < calls.indexOf('delete_my_account'), 'covers removed before the account');
+  eq(currentUser, null);
 });
