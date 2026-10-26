@@ -32,6 +32,8 @@
 - `sw.js`: オフライン対応（ネットワーク優先で、つながらないときだけ保存済みの内容を使う）。`tools/bump-version.py` がバージョンを更新します
 - `theme.js`: 表示テーマ（自動・ライト・ダーク）を、描画前に反映します。他のサイトの中（iframe）では中身を隠します
 - `share.html` / `share.js`: 共有リンクの閲覧ページ（読み取り専用）
+- `guide.html`: 使い方（機能の説明）
+- `privacy.html`: プライバシーポリシー（情報の扱いだけ）
 - `tests/`: ブラウザで動く自動テスト。`python tests/run.py` で、ヘッドレス Chrome を使って実行します（`tests/index.html` を、ローカルサーバー経由で開いても確認できます）。アクセシビリティの確認も含みますテストのページは、終わると結果を `run.py` に送り返します（IndexedDB の読み書きを実際の時間で待つため）。
 - `.github/workflows/test.yml`: プッシュと PR のたびに、上のテストを自動で実行します
 - `tools/bump-version.py`: `styles.css` / `app.js` などを変更したら実行して、キャッシュ回避用の `?v=` を更新します

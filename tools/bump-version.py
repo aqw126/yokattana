@@ -11,7 +11,7 @@ root = Path(__file__).resolve().parent.parent
 version = time.strftime("%Y%m%d%H%M")
 total = 0
 
-for name in ("index.html", "share.html", "privacy.html"):
+for name in ("index.html", "share.html", "privacy.html", "guide.html"):
     path = root / name
     html = path.read_text(encoding="utf-8")
     html, count = re.subn(r"((?:styles\.css|app\.js|store\.js|share\.js|supabase-config\.js|tmdb-config\.js)\?v=)[\w.]+", rf"\g<1>{version}", html)

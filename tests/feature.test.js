@@ -461,7 +461,7 @@ test('自動入力: CSP で、検索先と表紙の取得先だけを許可し�
 
 // ---- セキュリティの強化 ----
 test('Trusted Types: すべてのページの CSP で、HTML 文字列の差し込みを禁じている', async () => {
-  for (const page of ['index.html', 'share.html', 'privacy.html']) {
+  for (const page of ['index.html', 'share.html', 'privacy.html', 'guide.html']) {
     const csp = (await fetch('../' + page).then(r => r.text())).match(/Content-Security-Policy" content="([^"]+)"/)[1];
     assert(csp.includes("require-trusted-types-for 'script'") && csp.includes('trusted-types yokattana'), page);
   }
