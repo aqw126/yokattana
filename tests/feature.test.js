@@ -2,9 +2,11 @@
 const indexHtml = () => fetch('../index.html').then(r => r.text());
 
 test('引用とネタバレ: 正規化され、削除すると消える', () => {
+  // 以前の「記録全体がネタバレ」の印は、全体を「||」で囲む形に置き換わる
   const item = normalizeItem({ title: 'a', quote: '  名言  ', spoiler: true });
-  eq([item.quote, item.spoiler], ['名言', true]);
+  eq([item.quote, item.spoiler], ['||名言||', true]);
   eq(normalizeItem({ title: 'a', spoiler: 'yes' }).spoiler, false);
+  eq(normalizeItem({ title: 'a', notes: '前半||後半||', spoiler: true }).notes, '前半||後半||');
   eq(normalizeItem({ title: 'a', quote: 'x'.repeat(2000) }).quote.length, 1000);
   const emptied = emptyOf(item, new Date().toISOString());
   eq([emptied.quote, emptied.spoiler, hasContent(emptied)], ['', false, false]);
@@ -12,10 +14,11 @@ test('引用とネタバレ: 正規化され、削除すると消える', () => 
 
 test('引用とネタバレ: カードに引用とバッジが出て、検索にも使える', () => {
   resetApp();
-  setItems([make({ title: 'A', quote: '星の王子さま', spoiler: true }), make({ title: 'B' })]);
+  setItems([make({ title: 'A', quote: '星の||王子||さま', spoiler: true }), make({ title: 'B' })]);
   const cards = [...document.querySelectorAll('#grid article')];
   const shown = cards.find(c => c.querySelector('h3').textContent === 'A');
-  eq(shown.querySelector('blockquote').textContent, '星の王子さま');
+  eq(shown.querySelector('blockquote').textContent, '星のネタバレさま');
+  eq(shown.querySelectorAll('blockquote .spoiler-mask').length, 1);
   assert(!shown.querySelector('.spoiler-badge').hidden, 'badge shown');
   const other = cards.find(c => c.querySelector('h3').textContent === 'B');
   assert(other.querySelector('blockquote').hidden && other.querySelector('.spoiler-badge').hidden, 'hidden when empty');
@@ -28,13 +31,12 @@ test('引用とネタバレ: 編集画面から保存できる', () => {
   openEditor();
   $('#title').value = '新作';
   $('#entryGenre').value = '本';
-  $('#quote').value = '一文';
-  $('#spoiler').checked = true;
+  $('#quote').value = '一文と||秘密||';
   $('#form').requestSubmit();
   const saved = state.items.find(x => x.title === '新作');
-  eq([saved.quote, saved.spoiler], ['一文', true]);
+  eq([saved.quote, saved.spoiler], ['一文と||秘密||', true]);
   openEditor(saved);
-  eq([$('#quote').value, $('#spoiler').checked], ['一文', true]);
+  eq($('#quote').value, '一文と||秘密||');
   assert(!$('#share-one').hidden, 'share button for existing records');
   openEditor();
   assert($('#share-one').hidden, 'no share button for new records');
@@ -43,19 +45,20 @@ test('引用とネタバレ: 編集画面から保存できる', () => {
 
 test('CSV: 引用とネタバレも往復する', async () => {
   resetApp();
-  setItems([make({ title: 'Q', quote: '引用, "あり"', spoiler: true })]);
+  setItems([make({ title: 'Q', quote: '引用, "||あり||"', spoiler: true })]);
   let blob;
   const original = URL.createObjectURL;
   URL.createObjectURL = b => { blob = b; return 'blob:test'; };
   try { exportCsv(); } finally { URL.createObjectURL = original; }
   const [back] = csvItems(await blob.text());
-  eq([back.quote, back.spoiler], ['引用, "あり"', true]);
+  eq([back.quote, back.spoiler], ['引用, "||あり||"', true]);
 });
 
 // ---- 共有 ----
 const sharable = () => [
   make({ title: '安全', genre: '本', tags: ['x'], notes: '普通の感想', quote: '一文', spoiler: false, cover: 'data:image/png;base64,AAAA' }),
-  make({ title: 'ネタバレ有り', genre: '本', tags: ['x', 'y'], notes: '犯人は…', quote: '結末', spoiler: true }),
+  make({ title: 'ネタバレ有り', genre: '本', tags: ['x', 'y'], notes: '面白かった。||犯人は兄||だった', quote: '結末', spoiler: true }),
+  make({ title: '古い印', genre: '本', notes: '黒幕は弟', spoiler: true }),
   make({ title: 'メモなし', genre: '漫画' })
 ];
 
@@ -65,18 +68,22 @@ test('共有の内容: 「含めない」ではメモも引用も入らない', 
   eq(Object.keys(payload.items[0]).sort(), ['genre', 'rating', 'readAt', 'tags', 'title']);
 });
 
-test('共有の内容: 「ネタバレなしだけ」ではネタバレ記録の本文を入れない', () => {
+test('共有の内容: 「ネタバレの部分を除いて」ではネタバレの部分だけを省く', () => {
   const payload = sharePayload(sharable(), { title: 't', criteria: 'c', mode: 'safe' });
   const byTitle = Object.fromEntries(payload.items.map(x => [x.title, x]));
   eq([byTitle['安全'].notes, byTitle['安全'].quote], ['普通の感想', '一文']);
-  eq('notes' in byTitle['ネタバレ有り'], false);
-  eq(JSON.stringify(payload).includes('犯人'), false);
+  eq([byTitle['ネタバレ有り'].notes, byTitle['ネタバレ有り'].quote], ['面白かった。（ネタバレのため省略）だった', '結末']);
+  // 「||」のない古い印の記録も、全体が省かれる
+  eq(byTitle['古い印'].notes, '（ネタバレのため省略）');
+  eq(['犯人', '黒幕'].some(w => JSON.stringify(payload).includes(w)), false);
 });
 
-test('共有の内容: 「すべて」ではネタバレ記録に印を付ける', () => {
+test('共有の内容: 「すべて」では「||」のまま送り、見る側で隠す', () => {
   const payload = sharePayload(sharable(), { title: 't', criteria: 'c', mode: 'all' });
-  const spoiler = payload.items.find(x => x.title === 'ネタバレ有り');
-  eq([spoiler.notes, spoiler.spoiler], ['犯人は…', true]);
+  const byTitle = Object.fromEntries(payload.items.map(x => [x.title, x]));
+  eq(byTitle['ネタバレ有り'].notes, '面白かった。||犯人は兄||だった');
+  eq(byTitle['古い印'].notes, '||黒幕は弟||');
+  eq(payload.v, 2);
 });
 
 test('共有の内容: 表紙・ID・メールアドレスを含めず、100件で打ち切る', () => {
@@ -118,11 +125,11 @@ test('共有: 作成するとリンクができ、一覧に出て、停止でき
   filters.genre.add('本');
   render();
   openShare(visible(), '本の記録', criteriaText());
-  eq($('#share-summary').textContent.includes('2件'), true);
+  eq($('#share-summary').textContent.includes('3件'), true);
   document.querySelector('input[name=share-mode][value=safe]').checked = true;
   await createShare();
   const [row] = [...fakeCloud.shares.values()];
-  eq([row.user_id, row.title, row.item_count], ['u1', '本の記録', 2]);
+  eq([row.user_id, row.title, row.item_count], ['u1', '本の記録', 3]);
   assert(SHARE_TOKEN.test(row.id), 'valid token');
   const days = (new Date(row.expires_at) - Date.now()) / 86400000;
   assert(days > 29 && days < 31, 'default expiry is 30 days');
@@ -130,7 +137,7 @@ test('共有: 作成するとリンクができ、一覧に出て、停止でき
   assert($('#share-url').value.endsWith('share.html#' + row.id), 'url shows the token');
   assert(!$('#share-result').hidden, 'result shown');
   await new Promise(r => setTimeout(r, 0));
-  eq($('#share-list li .manage-name').textContent, '本の記録（2件）');
+  eq($('#share-list li .manage-name').textContent, '本の記録（3件）');
   await stopShare({ id: row.id, title: row.title });
   eq(fakeCloud.shares.size, 0);
   $('#share-dialog').close();
@@ -174,7 +181,7 @@ test('共有: 100件を超える一覧は作れない', async () => {
 });
 
 // ---- 閲覧ページ（share.js） ----
-test('閲覧ページ: ネタバレは閉じた状態、HTMLは文字として表示', () => {
+test('閲覧ページ: 以前の共有（記録全体がネタバレ）は閉じた状態、HTMLは文字として表示', () => {
   const root = document.createElement('div');
   renderShare(root, { payload: { title: '<img src=x onerror=alert(1)>', criteria: '本', sharedAt: new Date().toISOString(), items: [
     { title: '安全', genre: '本', rating: 4, tags: ['a'], notes: '感想', quote: '一文', spoiler: false },
@@ -186,7 +193,7 @@ test('閲覧ページ: ネタバレは閉じた状態、HTMLは文字として�
   eq(open, [['安全', false], ['<script>x</script>', true]]);
   const details = root.querySelector('details');
   assert(!details.open && details.textContent.includes('犯人は…'), 'spoiler is inside a closed <details>');
-  assert(root.textContent.includes('ネタバレを含む部分は、閉じた状態'), 'notice');
+  assert(root.textContent.includes('ネタバレの部分は隠しています'), 'notice');
 });
 
 test('閲覧ページ: メモなしの記録には本文の欄が出ない', () => {
@@ -672,4 +679,47 @@ test('CSP: 候補の小さな表紙を出す画像サーバー（AniList・TMDB�
   const csp = (await indexHtml()).match(/Content-Security-Policy" content="([^"]+)"/)[1];
   const img = csp.split(';').find(x => x.trim().startsWith('img-src'));
   ['https://s4.anilist.co', 'https://image.tmdb.org', 'https://*.mzstatic.com'].forEach(host => assert(img.includes(host), host));
+});
+
+// ---- メモの一部をネタバレにする ----
+test('ネタバレの部分: 「||」で囲んだ部分だけを分け、閉じていない「||」は文字のまま', () => {
+  eq(spoilerParts('前||A||中||B||後'), [{ text: '前', spoiler: false }, { text: 'A', spoiler: true }, { text: '中', spoiler: false }, { text: 'B', spoiler: true }, { text: '後', spoiler: false }]);
+  eq(spoilerParts('a || b'), [{ text: 'a || b', spoiler: false }]);
+  eq(spoilerParts('||複数\n行||'), [{ text: '複数\n行', spoiler: true }]);
+  eq([hasSpoiler('x||y||'), hasSpoiler('x||y'), hasSpoiler('')], [true, false, false]);
+  eq(withoutSpoilers('A||B||C'), 'A（ネタバレのため省略）C');
+});
+
+test('ネタバレの部分: 選んだ文字をボタンで「||」で囲む。何も選ばずに押すと案内する', () => {
+  resetApp();
+  openEditor();
+  const notes = $('#notes');
+  notes.value = '最後に犯人は兄だと分かる';
+  notes.focus();
+  notes.setSelectionRange(3, 7);
+  $('#mark-spoiler').click();
+  eq(notes.value, '最後に||犯人は兄||だと分かる');
+  assert(dirty, 'marks the form as changed');
+  notes.setSelectionRange(0, 0);
+  $('#mark-spoiler').click();
+  eq(notes.value, '最後に||犯人は兄||だと分かる');
+  assert($('#spoiler-hint').textContent.includes('選んでから'), 'hint shown');
+  const quote = $('#quote');
+  quote.value = '名言';
+  quote.focus();
+  quote.setSelectionRange(0, 2);
+  $('#mark-spoiler').click();
+  eq(quote.value, '||名言||');
+  $('#dialog').close();
+});
+
+test('ネタバレの部分: 閲覧ページでは部分ごとに隠し、押すとその部分だけ出る', () => {
+  const root = document.createElement('div');
+  renderShare(root, { payload: { title: 't', items: [{ title: 'A', genre: '本', rating: 4, tags: [], notes: '前半||<b>秘密</b>||後半' }] } });
+  const button = root.querySelector('.spoiler-reveal');
+  assert(button && !root.textContent.includes('秘密'), 'hidden at first');
+  assert(!root.querySelector('details'), 'not the old closed box');
+  button.click();
+  eq(root.querySelector('.share-body p').textContent, '前半<b>秘密</b>後半');
+  assert(!root.querySelector('.share-body b'), 'shown as text, not HTML');
 });
