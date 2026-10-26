@@ -158,8 +158,13 @@ test('プレビュー: 悪意のある表紙文字列でも、属性を注入で
   preview(null);
 });
 
-test('e(): HTMLをエスケープする', () => {
-  eq(e('<a href="x">&\'</a>'), '&lt;a href=&quot;x&quot;&gt;&amp;&#39;&lt;/a&gt;');
+test('カードのタグ: HTML として解釈せず、5件目以降は件数で出す', () => {
+  resetApp();
+  setItems([make({ title: 'T', tags: ['<img src=x onerror="window.__xss=1">', 'b', 'c', 'd', 'e', 'f'] })]);
+  const spans = [...document.querySelectorAll('#grid article .tags span')];
+  eq(spans.map(x => x.textContent), ['<img src=x onerror="window.__xss=1">', 'b', 'c', 'd', '+2']);
+  assert(!document.querySelector('#grid article .tags img'), 'no element injected');
+  eq(window.__xss, undefined);
 });
 
 // ---- CSV ----

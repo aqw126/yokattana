@@ -150,3 +150,47 @@ for each row execute function public.guard_library_item();
 update public.library_items
 set payload = jsonb_set(payload, '{updatedAt}', to_jsonb(to_char(now() at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')))
 where updated_at > now() + interval '5 minutes';
+
+-- 共有リンクの整理。Supabase の SQL Editor で、この下の部分を一度だけ実行する（何度実行しても大丈夫）。
+-- ・題名は100文字まで、件数は1〜100件、期限は作成より後（既存の行は検査しない）
+-- ・期限切れの共有は消す。作成のたびに自分の分を、週1回（.github/workflows/keepalive.yml）全員の分を
+alter table public.shares drop constraint if exists shares_title_length;
+alter table public.shares add constraint shares_title_length check (char_length(title) between 1 and 100) not valid;
+alter table public.shares drop constraint if exists shares_item_count;
+alter table public.shares add constraint shares_item_count check (item_count between 1 and 100) not valid;
+alter table public.shares drop constraint if exists shares_expiry;
+alter table public.shares add constraint shares_expiry check (expires_at is null or expires_at > created_at) not valid;
+
+create index if not exists shares_user_id_idx on public.shares (user_id);
+create index if not exists shares_expires_at_idx on public.shares (expires_at) where expires_at is not null;
+
+create or replace function public.limit_shares()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+begin
+  -- 期限切れのリンクは、50件の数に入れない
+  delete from public.shares where user_id = new.user_id and expires_at <= now();
+  if (select count(*) from public.shares where user_id = new.user_id) >= 50 then
+    raise exception 'too many shares';
+  end if;
+  return new;
+end;
+$$;
+
+-- 期限切れの共有を、全員分まとめて消す。消すのは見られなくなったものだけなので、だれが呼んでもよい
+create or replace function public.purge_expired_shares()
+returns integer
+language sql
+security definer
+set search_path = public
+as $$
+  with gone as (delete from public.shares where expires_at <= now() returning 1)
+  select count(*)::integer from gone;
+$$;
+
+revoke all on function public.purge_expired_shares() from public;
+grant execute on function public.purge_expired_shares() to anon, authenticated;
+
+select public.purge_expired_shares();
