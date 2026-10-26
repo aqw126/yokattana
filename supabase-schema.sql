@@ -194,3 +194,83 @@ revoke all on function public.purge_expired_shares() from public;
 grant execute on function public.purge_expired_shares() to anon, authenticated;
 
 select public.purge_expired_shares();
+
+-- 表紙の置き場所（Storage）。Supabase の SQL Editor で、この下の部分を一度だけ実行する（何度実行しても大丈夫）。
+-- 表紙は covers/<ユーザーID>/<画像の SHA-256> に置き、記録（library_items）には { hash } だけを入れる。
+-- ・自分のフォルダだけ読み書きできる。1枚 300KB まで、画像だけ、1人 200MB まで
+-- ・同じ名前のファイルは上書きしない（中身から作った名前なので、同じ名前なら同じ画像）
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('covers', 'covers', false, 300000, array['image/jpeg', 'image/png', 'image/webp', 'image/gif'])
+on conflict (id) do update set public = false, file_size_limit = excluded.file_size_limit, allowed_mime_types = excluded.allowed_mime_types;
+
+drop policy if exists "Users can read their own covers" on storage.objects;
+create policy "Users can read their own covers"
+on storage.objects for select to authenticated
+using (bucket_id = 'covers' and (storage.foldername(name))[1] = (select auth.uid())::text);
+
+-- 自分の表紙の合計サイズ。方針（policy）の中で storage.objects を直接数えると、自分自身を参照して止まるため、
+-- 関数にして、持ち主の権限で数える。数えるのは呼んだ本人の分だけ
+create or replace function public.my_cover_bytes()
+returns bigint
+language sql
+security definer
+set search_path = public, storage
+stable
+as $$
+  select coalesce(sum((metadata->>'size')::bigint), 0)
+  from storage.objects
+  where bucket_id = 'covers' and (storage.foldername(name))[1] = (select auth.uid())::text;
+$$;
+revoke all on function public.my_cover_bytes() from public, anon;
+grant execute on function public.my_cover_bytes() to authenticated;
+
+drop policy if exists "Users can upload their own covers" on storage.objects;
+create policy "Users can upload their own covers"
+on storage.objects for insert to authenticated
+with check (
+  bucket_id = 'covers'
+  and (storage.foldername(name))[1] = (select auth.uid())::text
+  and name ~ '^[0-9a-f-]{36}/[0-9a-f]{64}$'
+  and (select public.my_cover_bytes()) < 200000000
+);
+
+drop policy if exists "Users can delete their own covers" on storage.objects;
+create policy "Users can delete their own covers"
+on storage.objects for delete to authenticated
+using (bucket_id = 'covers' and (storage.foldername(name))[1] = (select auth.uid())::text);
+
+-- 新しい形（payload.format = 2、表紙は { hash }）の記録を、古い版のアプリが上書きしないようにする。
+-- 古い版は { hash } の表紙を読めず、表紙なしで保存してしまうため。新しい版を開けば、そのまま同期される
+create or replace function public.guard_library_item()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+declare
+  stamp timestamptz;
+begin
+  if tg_op = 'UPDATE' and old.payload->>'format' = '2' and coalesce(new.payload->>'format', '') <> '2' then
+    raise exception 'old_client: reload the app to sync this record';
+  end if;
+
+  begin
+    stamp := (new.payload->>'updatedAt')::timestamptz;
+  exception when others then
+    stamp := null;
+  end;
+  if stamp is null or stamp > now() + interval '5 minutes' then
+    stamp := now();
+    new.payload := jsonb_set(new.payload, '{updatedAt}', to_jsonb(to_char(stamp at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')));
+  end if;
+  new.updated_at := stamp;
+
+  if (select count(*) from public.library_items where user_id = new.user_id and id <> new.id) >= 5000 then
+    raise exception 'library_limit: too many items';
+  end if;
+  if (select coalesce(sum(pg_column_size(payload)), 0) from public.library_items where user_id = new.user_id and id <> new.id)
+     + pg_column_size(new.payload) > 100000000 then
+    raise exception 'library_limit: too much data';
+  end if;
+  return new;
+end;
+$$;
