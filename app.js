@@ -823,7 +823,6 @@ document.addEventListener('click',event=> document.querySelectorAll('.multi[open
 document.addEventListener('keydown',event=> { if(event.key==='Escape') document.querySelectorAll('.multi[open]').forEach(d=> { d.open=false; }); });
 $('#export').onclick=()=>backup();
 $('#export-csv').onclick=exportCsv;
-$('#import').onclick=()=>$('#file').click();
 $('#import-data').onclick=()=>$('#file').click();
 $('#open-data').onclick=()=> {
   $('#account-section').hidden=!currentUser;
