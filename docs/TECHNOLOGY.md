@@ -2,7 +2,7 @@
 
 「よかっ棚」を作り、運営するために使っている技術を、役割と、実際のコードの場所つきでまとめた、学習用のメモです。
 
-- 行番号は **2026-10-25 時点**（作品の自動入力の追加後）のものです。コードが変わるとずれるので、見つからないときは、**関数名で検索**してください。
+- 行番号は **2026-10-26 時点**（作品の自動入力と、容量の上限の追加後）のものです。コードが変わるとずれるので、見つからないときは、**関数名で検索**してください。
 - 場所の書き方は、`ファイル名:行番号（関数名）` です。
 
 ## 全体像
@@ -38,20 +38,20 @@ AniList ………… 漫画・アニメの作品情報と表紙画像（自動�
 | **CSS `:focus-visible`** | キーボード操作時の枠線 | `styles.css:695` |
 | **JavaScript（素のまま）** | すべての動作。ビルドも外部の枠組みもなし | `app.js`（記録）、`share.js`（共有ページ）、`theme.js`（テーマ） |
 | **localStorage** | ブラウザ内の保存領域（約5MB）。記録の本体の置き場所 | `app.js:1`（キー名）、`save()`、`load()` |
-| **Canvas API** | 表紙画像を、長辺600pxのJPEGに縮小 | `app.js:261`（`scaleImage`）、`:277`（`readCover`） |
-| **fetch + 外部の作品データ** | 作品の自動入力。本は国立国会図書館サーチ（OpenSearch・XML）、漫画・アニメは AniList（GraphQL）を、キー不要で直接呼ぶ。本の検索は遅いので、届いた順に候補を出す。表紙は画像を取得して Canvas で縮小し、data URL にして保存 | `app.js:580`（`runWorkSearch`）。詳しくは「7. 作品の自動入力」 |
-| **Blob / URL.createObjectURL** | JSON・CSV をファイルとして書き出す | `app.js:688`（`backup`）、`:826`（`exportCsv`） |
-| **TextDecoder** | UTF-8 で読めなければ Shift_JIS で読み直す | `app.js:896`（`readText`） |
-| **Web Crypto** | 記録のID（`randomUUID`）と、共有リンクの乱数（128ビット） | `app.js:229`、`:1233`（`makeShareToken`） |
-| **Clipboard / Web Share API** | リンクのコピーと、スマホの共有メニュー | `app.js:1285`（`copyText`） |
+| **Canvas API** | 表紙画像を、長辺600pxのJPEGに縮小 | `app.js:272`（`scaleImage`）、`:293`（`readCover`） |
+| **fetch + 外部の作品データ** | 作品の自動入力。本は国立国会図書館サーチ（OpenSearch・XML）、漫画・アニメは AniList（GraphQL）を、キー不要で直接呼ぶ。本の検索は遅いので、届いた順に候補を出す。表紙は画像を取得して Canvas で縮小し、data URL にして保存 | `app.js:596`（`runWorkSearch`）。詳しくは「7. 作品の自動入力」 |
+| **Blob / URL.createObjectURL** | JSON・CSV をファイルとして書き出す | `app.js:704`（`backup`）、`:842`（`exportCsv`） |
+| **TextDecoder** | UTF-8 で読めなければ Shift_JIS で読み直す | `app.js:912`（`readText`） |
+| **Web Crypto** | 記録のID（`randomUUID`）と、共有リンクの乱数（128ビット） | `app.js:239`、`:1249`（`makeShareToken`） |
+| **Clipboard / Web Share API** | リンクのコピーと、スマホの共有メニュー | `app.js:1301`（`copyText`） |
 | **Intl.DateTimeFormat** | 日本語の日付表示 | `app.js` の `date()` |
 | **Web App Manifest** | ホーム画面に追加するときの名前・アイコン | `manifest.webmanifest` |
-| **Service Worker** | 通信を仲介し、オフラインでも開けるようにする | `sw.js:21`（install）、`:30`（activate）、`:38`（fetch）、登録は `app.js:1383` |
+| **Service Worker** | 通信を仲介し、オフラインでも開けるようにする | `sw.js:21`（install）、`:30`（activate）、`:38`（fetch）、登録は `app.js:1399` |
 
 ### 画面の描画のしかた
-- フレームワークを使わず、`render()` が、記録の配列から、カードを作り直します（`app.js:372`）。
+- フレームワークを使わず、`render()` が、記録の配列から、カードを作り直します（`app.js:388`）。
 - 表示用の文字は、`textContent` で入れます。HTML として解釈させないことで、XSS を防ぎます。
-- 並べ替えは `compareItems`（`app.js:359`）、絞り込みは `visible`（`app.js:352`）。
+- 並べ替えは `compareItems`（`app.js:375`）、絞り込みは `visible`（`app.js:368`）。
 
 ---
 
@@ -63,8 +63,8 @@ Supabase は、PostgreSQL を中心にした、オープンソースの BaaS で
 |---|---|---|
 | **PostgreSQL** | データベース本体。表は `library_items`（記録）と `shares`（共有） | `supabase-schema.sql:1`、`:49` |
 | **jsonb** | 記録の中身を、JSON のまま1列に保存できる型。項目を増やしても、表を変えずに済む | `library_items.payload` |
-| **Auth** | ログインの管理。Google でログインすると、**JWT**（本人の証明書）が発行され、ブラウザに保存される | `app.js:161`（`onAuthStateChange`）、`:163`（`getSession`） |
-| **PostgREST** | 表を、自動で REST API にする仕組み。`from('...').upsert()` は、この API を呼んでいる | `app.js:66`（記録の送信）、`:102`（取得）、`:1313`（共有の作成） |
+| **Auth** | ログインの管理。Google でログインすると、**JWT**（本人の証明書）が発行され、ブラウザに保存される | `app.js:166`（`onAuthStateChange`）、`:168`（`getSession`） |
+| **PostgREST** | 表を、自動で REST API にする仕組み。`from('...').upsert()` は、この API を呼んでいる | `app.js:66`（記録の送信）、`:107`（取得）、`:1329`（共有の作成） |
 | **RLS（行レベルセキュリティ）** | 「自分の行だけ読み書きできる」を、データベース側で強制 | `supabase-schema.sql:11`〜（記録）、`:61`〜（共有） |
 | **RPC（SQL 関数）** | `get_share()`（共有の閲覧）、`delete_my_account()`（退会） | `supabase-schema.sql:91`、`:30` |
 | **`security definer`** | 関数を、呼んだ人ではなく、持ち主の権限で動かす指定。使う場合は `search_path` の固定が必須 | `supabase-schema.sql:30`、`:91` |
@@ -79,10 +79,10 @@ Supabase は、PostgreSQL を中心にした、オープンソースの BaaS で
 
 | 技術 | 役割 | 場所 |
 |---|---|---|
-| **OAuth 2.0（Google）** | パスワードを預からず、Google に本人確認を任せる | `app.js:183`（`signInWithGoogle`） |
-| **ログイン後の処理** | 別アカウントの記録を混ぜない確認、クラウドとの統合 | `app.js:131`（`finishLogin`） |
-| **ログアウト** | 端末の記録と、所有者の印を消す | `app.js:146`（`applySignedOut`） |
-| **退会** | RPC を呼び、クラウドのアカウントごと削除 | `app.js:949`（`deleteAccount`） |
+| **OAuth 2.0（Google）** | パスワードを預からず、Google に本人確認を任せる | `app.js:188`（`signInWithGoogle`） |
+| **ログイン後の処理** | 別アカウントの記録を混ぜない確認、クラウドとの統合 | `app.js:136`（`finishLogin`） |
+| **ログアウト** | 端末の記録と、所有者の印を消す | `app.js:151`（`applySignedOut`） |
+| **退会** | RPC を呼び、クラウドのアカウントごと削除 | `app.js:965`（`deleteAccount`） |
 | **Google Search Console** | サイトの所有確認（同意画面の公開に必要） | `index.html` の `google-site-verification` |
 
 ---
@@ -91,15 +91,15 @@ Supabase は、PostgreSQL を中心にした、オープンソースの BaaS で
 
 | 考え方 | 内容 | 場所 |
 |---|---|---|
-| **ローカルファースト** | 先に localStorage へ保存し、あとからクラウドへ送る。通信が切れても使える | `app.js:680`（`commit`） |
+| **ローカルファースト** | 先に localStorage へ保存し、あとからクラウドへ送る。通信が切れても使える | `app.js:696`（`commit`） |
 | **Last-Write-Wins** | 記録ごとの `updatedAt` を比べ、新しい方を採用 | `app.js:55`（`mergeItems`） |
-| **トゥームストーン（削除の印）** | 行を消さず、`deleted: true` を付けて、他の端末にも削除を伝える | `app.js:202`（`emptyOf`） |
-| **ごみ箱** | 30日は中身を残し、過ぎたら中身だけ消す。90日で印も消す | `app.js:206`（`compactTrash`）、`:980`（`renderTrash`） |
-| **同期待ちと再送** | 失敗した記録のIDを控え、接続の復帰・1分ごと・タブを開いたときに再送 | `app.js:90`（`flushPending`） |
+| **トゥームストーン（削除の印）** | 行を消さず、`deleted: true` を付けて、他の端末にも削除を伝える | `app.js:212`（`emptyOf`） |
+| **ごみ箱** | 30日は中身を残し、過ぎたら中身だけ消す。90日で印も消す | `app.js:216`（`compactTrash`）、`:996`（`renderTrash`） |
+| **同期待ちと再送** | 失敗した記録のIDを控え、接続の復帰・1分ごと・タブを開いたときに再送 | `app.js:95`（`flushPending`） |
 | **まとめて送る** | 20件ずつ送信 | `app.js:60`（`syncItems`） |
-| **ページ分けの取得** | 100件ずつ全件を読む（取得上限を超えないため） | `app.js:99`（`fetchRemoteItems`） |
-| **ログイン時の統合** | クラウドと手元を合わせ、差分だけ送る | `app.js:108`（`loadCloudItems`） |
-| **別のタブの変更の取り込み** | `storage` イベントで検知 | `app.js:1388` |
+| **ページ分けの取得** | 100件ずつ全件を読む（取得上限を超えないため） | `app.js:104`（`fetchRemoteItems`） |
+| **ログイン時の統合** | クラウドと手元を合わせ、差分だけ送る | `app.js:113`（`loadCloudItems`） |
+| **別のタブの変更の取り込み** | `storage` イベントで検知 | `app.js:1404` |
 
 ---
 
@@ -107,12 +107,12 @@ Supabase は、PostgreSQL を中心にした、オープンソースの BaaS で
 
 | 機能 | 場所 |
 |---|---|
-| 記録の正規化（壊れたデータを整える。XSS 対策も兼ねる） | `app.js:223`（`normalizeItem`） |
-| JSON の書き出し・読み込み | `app.js:688`（`backup`）、`:901`（`importJson`） |
-| CSV の書き出し（数式の実行を防ぐ印つき） | `app.js:820`（`csvCell`）、`:826`（`exportCsv`） |
-| CSV の読み込み（引用符・改行・見出しの名前の違いに対応） | `app.js:836`（`parseCsv`）、`:878`（`csvItems`）、`:919`（`importCsv`） |
-| ジャンル・タグの整理（名前の変更・まとめ・削除） | `app.js:1067`（`applyBulk`）、`:1074`（`renameOption`） |
-| 振り返り（集計と棒グラフ） | `app.js:1110`（`drawBars`）、`:1135`（`drawReview`） |
+| 記録の正規化（壊れたデータを整える。XSS 対策も兼ねる） | `app.js:233`（`normalizeItem`） |
+| JSON の書き出し・読み込み | `app.js:704`（`backup`）、`:917`（`importJson`） |
+| CSV の書き出し（数式の実行を防ぐ印つき） | `app.js:836`（`csvCell`）、`:842`（`exportCsv`） |
+| CSV の読み込み（引用符・改行・見出しの名前の違いに対応） | `app.js:852`（`parseCsv`）、`:894`（`csvItems`）、`:935`（`importCsv`） |
+| ジャンル・タグの整理（名前の変更・まとめ・削除） | `app.js:1083`（`applyBulk`）、`:1090`（`renameOption`） |
+| 振り返り（集計と棒グラフ） | `app.js:1126`（`drawBars`）、`:1151`（`drawReview`） |
 
 ---
 
@@ -120,10 +120,10 @@ Supabase は、PostgreSQL を中心にした、オープンソースの BaaS で
 
 | 要素 | 内容 | 場所 |
 |---|---|---|
-| 共有の中身を作る | ネタバレの扱い（含めない／ネタバレなしだけ／すべて）に応じて、メモと引用を出し入れ。表紙・ID・メールは含めない | `app.js:1238`（`sharePayload`） |
-| リンクの文字列 | 128ビットの乱数を base64url に | `app.js:1233`（`makeShareToken`） |
-| 作成・一覧・停止 | `shares` への挿入、取得、削除 | `app.js:1304`（`createShare`）、`:1326`（`loadMyShares`） |
-| 手動で選ぶ | 選択のモード、選択の保持、並び順の維持 | `app.js:1200`（`pickedItems`）、`:1215`（`setPicking`） |
+| 共有の中身を作る | ネタバレの扱い（含めない／ネタバレなしだけ／すべて）に応じて、メモと引用を出し入れ。表紙・ID・メールは含めない | `app.js:1254`（`sharePayload`） |
+| リンクの文字列 | 128ビットの乱数を base64url に | `app.js:1249`（`makeShareToken`） |
+| 作成・一覧・停止 | `shares` への挿入、取得、削除 | `app.js:1320`（`createShare`）、`:1342`（`loadMyShares`） |
+| 手動で選ぶ | 選択のモード、選択の保持、並び順の維持 | `app.js:1216`（`pickedItems`）、`:1231`（`setPicking`） |
 | 閲覧ページ | `share.html#<リンクの文字列>` を読み、RPC で取得して表示。すべて `textContent` | `share.js:60`（`loadShare`）、`:21`（`renderShare`） |
 | ネタバレの隠し方 | ネタバレありの記録は、閉じた `<details>` に入れる | `share.js` の `renderShareItem` |
 | 閲覧ページの安全策 | 検索除外、参照元を送らない、通信先の限定、SRI | `share.html` の `<head>` |
@@ -136,15 +136,15 @@ Supabase は、PostgreSQL を中心にした、オープンソースの BaaS で
 
 | 要素 | 内容 | 場所 |
 |---|---|---|
-| **AniList（GraphQL）** | 漫画・アニメ・ライトノベルを探す。1回の問い合わせで、題名・種類・ジャンル・作者（アニメは制作会社）・表紙の URL を、必要な項目だけまとめて取れる | `app.js:541`（`searchAniList`）、`:510`（`parseAniList`） |
-| **国立国会図書館サーチ（OpenSearch）** | 本を探す。結果は XML（RSS）なので、`DOMParser` で読む | `app.js:546`（`searchNdl`）、`:523`（`parseNdl`） |
+| **AniList（GraphQL）** | 漫画・アニメ・ライトノベルを探す。1回の問い合わせで、題名・種類・ジャンル・作者（アニメは制作会社）・表紙の URL を、必要な項目だけまとめて取れる | `app.js:557`（`searchAniList`）、`:526`（`parseAniList`） |
+| **国立国会図書館サーチ（OpenSearch）** | 本を探す。結果は XML（RSS）なので、`DOMParser` で読む | `app.js:562`（`searchNdl`）、`:539`（`parseNdl`） |
 | 本の結果の絞り込み | 曖昧一致が多い（「火車」で「稲荷書店」が出る）ので、入力した文字を題名に含むものだけを残す。同じ題名・作者の版をまとめ、完全一致を先に、版の多い本（よく知られた本）を上に並べる | `parseNdl` |
 | 文字の比べ方 | `normalize('NFKC')` で全角・半角をそろえ、空白や記号を除いてから比べる | `app.js` の `workKey` |
-| 作者名の整え方 | 「宮部, みゆき, 1960-」「宮部／みゆき」→「宮部みゆき」 | `app.js:505`（`personName`） |
-| 届いた順に表示 | 国立国会図書館サーチは初回 8〜20 秒かかる（AniList は約 0.5 秒）。それぞれの結果が届いたら、すぐ候補に足す。古い検索の結果は、番号（`workSearchId`）で捨てる | `app.js:580`（`runWorkSearch`） |
-| ジャンルの決め方 | 種類（アニメ・漫画・ライトノベル・小説・本）ごとに名前の候補を持ち、すでに使っている名前を優先（「マンガ」を使っていれば「マンガ」） | `app.js:501`（`pickGenre`） |
-| 入力のしかた | 題名とジャンルは置き換え、タグは今のタグに足す。自分で選んだ表紙は上書きしない | `app.js:615`（`applyWork`） |
-| 表紙の取り込み | 画像を `fetch` で取得し、Canvas で長辺600pxに縮小して data URL で保存（手で選んだ画像と同じ形）。本の表紙は、ブラウザから使える無料の提供元がないため取得しない | `app.js:608`（`fetchCover`） |
+| 作者名の整え方 | 「宮部, みゆき, 1960-」「宮部／みゆき」→「宮部みゆき」 | `app.js:521`（`personName`） |
+| 届いた順に表示 | 国立国会図書館サーチは初回 8〜20 秒かかる（AniList は約 0.5 秒）。それぞれの結果が届いたら、すぐ候補に足す。古い検索の結果は、番号（`workSearchId`）で捨てる | `app.js:596`（`runWorkSearch`） |
+| ジャンルの決め方 | 種類（アニメ・漫画・ライトノベル・小説・本）ごとに名前の候補を持ち、すでに使っている名前を優先（「マンガ」を使っていれば「マンガ」） | `app.js:517`（`pickGenre`） |
+| 入力のしかた | 題名とジャンルは置き換え、タグは今のタグに足す。自分で選んだ表紙は上書きしない | `app.js:631`（`applyWork`） |
+| 表紙の取り込み | 画像を `fetch` で取得し、Canvas で長辺600pxに縮小して data URL で保存（手で選んだ画像と同じ形）。本の表紙は、ブラウザから使える無料の提供元がないため取得しない | `app.js:624`（`fetchCover`） |
 | 個人情報 | 送るのは入力した題名だけ。プライバシーポリシーにも記載 | `privacy.html` の「作品の検索」 |
 
 ---
@@ -154,15 +154,15 @@ Supabase は、PostgreSQL を中心にした、オープンソースの BaaS で
 | 脅威 | 対策 | 場所 |
 |---|---|---|
 | 他人のデータを見られる | RLS | `supabase-schema.sql` |
-| スクリプトの注入（XSS） | `textContent`、HTMLのエスケープ、表紙は画像のdata URLだけ許可 | `app.js:2`（`COVER` の正規表現）、`:223`（`normalizeItem`）、`preview`（`:433`） |
+| スクリプトの注入（XSS） | `textContent`、HTMLのエスケープ、表紙は画像のdata URLだけ許可 | `app.js:2`（`COVER` の正規表現）、`:233`（`normalizeItem`）、`preview`（`:449`） |
 | 外部スクリプトの改ざん | バージョン固定と **SRI**（`integrity` 属性） | `index.html:499` |
 | 想定外の通信・実行 | **CSP**（読み込み・通信先の許可リスト）。通信先は Supabase、AniList、国立国会図書館サーチ、画像は AniList の画像サーバーだけ | `index.html:15` |
-| 外部の作品データの注入 | 検索結果は `textContent` で表示し、表紙は取得後に Canvas で描き直して data URL に。外部の画像URLは保存しない | `app.js:558`（`workOption`）、`:608`（`fetchCover`） |
+| 外部の作品データの注入 | 検索結果は `textContent` で表示し、表紙は取得後に Canvas で描き直して data URL に。外部の画像URLは保存しない | `app.js:574`（`workOption`）、`:624`（`fetchCover`） |
 | 共有リンクの推測 | 128ビットの乱数。一覧は取れず、IDを知る人が1件だけ読める | `get_share`（`supabase-schema.sql:91`） |
-| CSV の数式実行 | `=` `+` `-` `@` で始まるセルに印 | `app.js:820`（`csvCell`） |
+| CSV の数式実行 | `=` `+` `-` `@` で始まるセルに印 | `app.js:836`（`csvCell`） |
 | 乱用 | 共有は1人50件、100件まで、1MB未満 | `supabase-schema.sql:49`〜 |
-| 別アカウントへの混入 | 端末の所有者を記録し、違えば破棄 | `app.js:131`（`finishLogin`） |
-| 容量の使い切り | 記録は1件300KB（check 制約）、1人5000件・合計100MB（トリガー）まで。上限に達したら、端末に保存したまま一度だけ知らせる | `supabase-schema.sql` の `guard_library_item`、`app.js` の `syncItems` |
+| 別アカウントへの混入 | 端末の所有者を記録し、違えば破棄 | `app.js:136`（`finishLogin`） |
+| 容量の使い切り | 記録は1件300KB（check 制約）、1人5000件・合計100MB（トリガー）まで。上限に達したら、端末に保存したまま一度だけ知らせる | `supabase-schema.sql:115`（`guard_library_item`）、`app.js:60`（`syncItems`） |
 | 時計のずれ | 未来の更新日時は、端末（`notFuture`）とクラウド（`guard_library_item`）の両方で今に直す。5分までのずれは許す | `app.js` の `normalizeItem`、`supabase-schema.sql` |
 
 ---
@@ -171,7 +171,7 @@ Supabase は、PostgreSQL を中心にした、オープンソースの BaaS で
 
 | 項目 | 内容 | 場所 |
 |---|---|---|
-| ダークモード | 自動・ライト・ダークの切り替え。選択は localStorage に保存。描画前に反映してちらつきを防ぐ | `theme.js`、`app.js:705`（`applyTheme`） |
+| ダークモード | 自動・ライト・ダークの切り替え。選択は localStorage に保存。描画前に反映してちらつきを防ぐ | `theme.js`、`app.js:721`（`applyTheme`） |
 | アクセシビリティ | `aria-label`、`aria-labelledby`、本文へ移動するリンク、色の対比（4.5:1）、大きなタップ領域 | `index.html:22`、`styles.css:695` |
 | お知らせ（トースト） | 開いているダイアログの中に出す（背後に隠れないため） | `app.js:28`（`showToast`） |
 | 状態表示 | オフライン、同期待ち、同期中 | `app.js:37`（`updateSyncStatus`） |
