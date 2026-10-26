@@ -238,11 +238,13 @@ test('オフライン: Service Workerの事前保存リストが、すべて実�
   assert(html.includes('manifest.webmanifest'), 'manifest linked');
 });
 
-test('オフライン: 保存済みの一覧は、通信なしでも読み込める', () => {
+test('オフライン: 保存済みの一覧は、通信なしでも読み込める', async () => {
   resetApp();
+  await whenSaved();
+  await LocalStore.replaceItems([]);
   setItems([make({ title: 'オフラインでも' })]);
-  const reloaded = load();
-  eq(reloaded.map(x => x.title), ['オフラインでも']);
+  await whenSaved();
+  eq((await LocalStore.loadItems()).map(normalizeItem).map(x => x.title), ['オフラインでも']);
 });
 
 // ---- コピーの反応 ----
@@ -707,6 +709,8 @@ test('ネタバレの部分: 選んだ文字をボタンで「||」で囲む。�
   const quote = $('#quote');
   quote.value = '名言';
   quote.focus();
+  // 画面に入力の焦点がないとき（裏で開いたテストなど）は focus が届かないので、ここで送る
+  quote.dispatchEvent(new FocusEvent('focus'));
   quote.setSelectionRange(0, 2);
   $('#mark-spoiler').click();
   eq(quote.value, '||名言||');

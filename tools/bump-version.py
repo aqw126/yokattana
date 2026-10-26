@@ -14,7 +14,7 @@ total = 0
 for name in ("index.html", "share.html", "privacy.html"):
     path = root / name
     html = path.read_text(encoding="utf-8")
-    html, count = re.subn(r"((?:styles\.css|app\.js|share\.js|supabase-config\.js|tmdb-config\.js)\?v=)[\w.]+", rf"\g<1>{version}", html)
+    html, count = re.subn(r"((?:styles\.css|app\.js|store\.js|share\.js|supabase-config\.js|tmdb-config\.js)\?v=)[\w.]+", rf"\g<1>{version}", html)
     path.write_text(html, encoding="utf-8")
     total += count
 

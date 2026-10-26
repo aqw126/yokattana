@@ -1,6 +1,8 @@
 const KEY='yokattana-v1',OWNER_KEY='yokattana-owner',PENDING_KEY='yokattana-pending',$=s=>document.querySelector(s);
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const COVER=/^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+$/;
+// IndexedDB に保存した表紙は、記録の中では { hash }（画像の SHA-256）だけを持つ
+const COVER_REF=/^[0-9a-f]{64}$/;
 const TRASH_DAYS=30,CARD_PAGE=24,TOMBSTONE_DAYS=90,SYNC_CHUNK=20,PAGE_SIZE=100,COVER_LIMIT=150000;
 const cloud=window.supabase?.createClient(window.SUPABASE_CONFIG?.url,window.SUPABASE_CONFIG?.publishableKey);
 // CSP の Trusted Types で、HTML 文字列やスクリプトの URL を渡す処理は禁止している。例外はこの2つだけ:
@@ -10,6 +12,12 @@ const trusted=window.trustedTypes?.createPolicy('yokattana', {
   createScriptURL:url=> { if(url!=='sw.js') throw new TypeError(url); return url; }
 })||{ createHTML:x=>x,createScriptURL:x=>x };
 let shownLimit=CARD_PAGE,lastView='',picking=false,currentUser=null,flushing=false,shrinking=false,dirty=false,limitWarned=false;
+// 保存先。'loading'（起動中）→ 'idb'（IndexedDB）。IndexedDB を使えないときは 'legacy'（以前の localStorage）
+let storeMode='loading',writes=Promise.resolve(),fullWrite=false,bootDirty=false;
+const LEGACY_KEEP_DAYS=30,PERSIST_KEY='yokattana-persist-asked';
+const SAVE_FAILED='保存できませんでした。ブラウザの保存容量が足りない可能性があります。バックアップを書き出して、不要な記録や画像を減らしてください。';
+// 別のタブでの保存を知らせ合う
+const channel=window.BroadcastChannel?new BroadcastChannel('yokattana-items'):null;
 
 // 旧名称で保存されたデータを引き継ぐ
 try {
@@ -69,7 +77,8 @@ async function syncItems(items) {
   for(let i=0;i<items.length;i+=SYNC_CHUNK) {
     const chunk=items.slice(i,i+SYNC_CHUNK);
     try {
-      const { error }=await cloud.from('library_items').upsert(chunk.map(item=>( { id:item.id,user_id:currentUser.id,payload:item,updated_at:item.updatedAt } )));
+      const rows=await Promise.all(chunk.map(async item=>( { id:item.id,user_id:currentUser.id,payload:await withInlineCover(item),updated_at:item.updatedAt })));
+      const { error }=await cloud.from('library_items').upsert(rows);
       if(error) throw error;
       chunk.forEach(item=> {
         // 送信中にさらに編集された記録は、同期待ちのままにする
@@ -126,15 +135,14 @@ async function loadCloudItems() {
   const merged=compactTrash(mergeItems(state.items,[...remote.values()]));
   // 十分古い削除記録は、端末とクラウドの両方から片付ける
   const expired=merged.filter(x=>x.deleted&&new Date(x.updatedAt)<cutoff);
-  state.items=merged.filter(x=>!expired.includes(x));
-  save();
+  commit(merged.filter(x=>!expired.includes(x)),true);
   if(expired.length) {
     try { await cloud.from('library_items').delete().in('id',expired.map(x=>x.id)); }
     catch {}
   }
   await syncItems(state.items.filter(item=> { const r=remote.get(item.id); return !r||isNewer(item,r); }));
   render();
-  shrinkExistingCovers()
+  tidyCovers()
 }
 function setAuthMessage(message='') {
   $('#auth-message').textContent=message
@@ -145,7 +153,7 @@ async function finishLogin(user) {
   $('#auth-button').textContent='ログアウト';
   // 別アカウントのローカルデータを、ログインしたアカウントへ混ぜない
   if(localStorage.getItem(OWNER_KEY)!==user.id) {
-    if(localStorage.getItem(OWNER_KEY)) { state.items=[]; pending.clear(); savePending(); save(); }
+    if(localStorage.getItem(OWNER_KEY)) { clearLocalRecords(); pending.clear(); savePending(); }
     localStorage.setItem(OWNER_KEY,user.id)
   }
   // ログイン直後は、クラウドとの差分をまとめて送るので、以前の同期待ちは破棄する
@@ -156,10 +164,9 @@ async function finishLogin(user) {
 }
 function applySignedOut() {
   currentUser=null;
-  state.items=[];
+  clearLocalRecords();
   pending.clear();
   savePending();
-  save();
   localStorage.removeItem(OWNER_KEY);
   $('#auth-button').textContent='ログイン';
   updateSyncStatus();
@@ -201,7 +208,7 @@ async function signInWithGoogle() {
 }
 
 const state= {
-  items:load(),cover:null,formTags:[]
+  items:[],cover:null,formTags:[]
 };
 function validDate(v,fallback) {
   const t=new Date(v);
@@ -215,8 +222,9 @@ function notFuture(iso) {
 function hasContent(x) {
   return!!(x.title||x.notes||x.quote||x.cover||x.tags.length)
 }
+// 中身を消した「削除済み」の印。今後増える項目も残さないよう、決まった項目だけで作り直す
 function emptyOf(x,now) {
-  return { ...x,title:'',notes:'',quote:'',spoiler:false,cover:null,tags:[],readAt:null,deleted:true,updatedAt:now }
+  return { id:x.id,genre:x.genre,rating:x.rating,createdAt:x.createdAt,title:'',notes:'',quote:'',spoiler:false,cover:null,tags:[],readAt:null,deleted:true,updatedAt:now }
 }
 // ごみ箱に入れて30日たった記録は、中身を消して、削除したことだけを残す
 function compactTrash(list) {
@@ -276,12 +284,22 @@ function withoutSpoilers(text) {
 function wrapSpoiler(text) {
   return text&&!hasSpoiler(text)?`||${text}||`:text
 }
+// 記録の項目。これ以外の項目も、捨てずに残す（新しい版で増えた項目を、古い版で編集しても消さないため）
+const ITEM_FIELDS=new Set(['id','title','genre','rating','tags','notes','quote','spoiler','cover','readAt','createdAt','updatedAt','deleted']);
+function extraFields(raw) {
+  return Object.fromEntries(Object.entries(raw).filter(([key,value])=>!ITEM_FIELDS.has(key)&&/^[A-Za-z][A-Za-z0-9_]{0,40}$/.test(key)&&value!==undefined&&typeof value!=='function'))
+}
+function normalizeCover(cover) {
+  if(typeof cover==='string') return COVER.test(cover)?cover:null;
+  return cover&&typeof cover==='object'&&COVER_REF.test(cover.hash)?{ hash:cover.hash }:null
+}
 function normalizeItem(raw) {
   if(!raw||typeof raw!=='object') return null;
   const deleted=raw.deleted===true,title=String(raw.title??'').trim();
   if(!deleted&&!title) return null;
   const createdAt=notFuture(validDate(raw.createdAt,new Date().toISOString()));
   return {
+    ...extraFields(raw),
     id:typeof raw.id==='string'&&UUID.test(raw.id)?raw.id:crypto.randomUUID(),
     title,genre:String(raw.genre??'').trim()||'未分類',
     rating:Math.min(5,Math.max(3,Number(raw.rating)||3)),
@@ -292,11 +310,11 @@ function normalizeItem(raw) {
       if(legacy) { notes=wrapSpoiler(notes); quote=wrapSpoiler(quote); }
       return { notes,quote,spoiler:hasSpoiler(notes)||hasSpoiler(quote) }
     })(),
-    cover:typeof raw.cover==='string'&&COVER.test(raw.cover)?raw.cover:null,
+    cover:normalizeCover(raw.cover),
     readAt:validDay(raw.readAt),createdAt,updatedAt:notFuture(validDate(raw.updatedAt,createdAt)),deleted
   }
 }
-function load() {
+function loadLegacy() {
   try {
     const list=JSON.parse(localStorage.getItem(KEY));
     return Array.isArray(list)?list.map(normalizeItem).filter(Boolean):[]
@@ -305,7 +323,7 @@ function load() {
     return[]
   }
 }
-function save() {
+function saveLegacy() {
   try {
     localStorage.setItem(KEY,JSON.stringify(state.items));
     return true
@@ -345,13 +363,94 @@ async function readCover(file) {
   try { return await scaleImage(url); }
   finally { URL.revokeObjectURL(url); }
 }
-// 以前の大きな表紙画像を縮小して、保存容量と同期量を減らす
+function dataUrlToBlob(url) {
+  const comma=url.indexOf(','),type=url.slice(5,url.indexOf(';')),bytes=atob(url.slice(comma+1)),out=new Uint8Array(bytes.length);
+  for(let i=0;i<bytes.length;i++) out[i]=bytes.charCodeAt(i);
+  return new Blob([out], { type })
+}
+function blobToDataUrl(blob) {
+  return new Promise((resolve,reject)=> {
+    const reader=new FileReader();
+    reader.onload=()=>resolve(reader.result);
+    reader.onerror=()=>reject(reader.error);
+    reader.readAsDataURL(blob)
+  })
+}
+// 縮小済みの表紙（data URL）を保存し、記録に入れる値を返す。IndexedDB なら { hash }、使えなければ data URL のまま
+async function storeCover(dataUrl) {
+  if(storeMode!=='idb') return dataUrl;
+  return { hash:await LocalStore.putCover(dataUrlToBlob(dataUrl)) }
+}
+// 表紙を画面に出す。IndexedDB の表紙は、読み出した Blob の URL を使い回す
+const coverUrls=new Map();
+async function loadCoverUrl(hash) {
+  if(coverUrls.has(hash)) return coverUrls.get(hash);
+  const blob=storeMode==='idb'?await LocalStore.getCover(hash).catch(()=>null):null;
+  if(!blob) return'';
+  const url=URL.createObjectURL(blob);
+  coverUrls.set(hash,url);
+  return url
+}
+function showCover(img,cover,onMissing) {
+  if(typeof cover==='string') { img.src=cover; return; }
+  const ready=coverUrls.get(cover.hash);
+  if(ready) { img.src=ready; return; }
+  img.dataset.hash=cover.hash;
+  loadCoverUrl(cover.hash).then(url=> {
+    if(img.dataset.hash!==cover.hash) return;
+    if(url) img.src=url;
+    else onMissing?.()
+  })
+}
+// 書き出しと同期では、表紙を以前と同じ data URL の形に戻す（古いバックアップ・ほかの端末と同じ形のまま）
+async function withInlineCover(item) {
+  if(!item.cover||typeof item.cover==='string') return item;
+  const blob=storeMode==='idb'?await LocalStore.getCover(item.cover.hash).catch(()=>null):null;
+  return { ...item,cover:blob?await blobToDataUrl(blob):null }
+}
+// data URL の表紙（読み込み・クラウド・移行前の記録）を IndexedDB に移す。大きすぎるものは縮小してから
+async function internCovers(items) {
+  if(storeMode!=='idb') return items;
+  let changed=false;
+  const out=[];
+  for(const item of items) {
+    if(typeof item.cover==='string') {
+      try {
+        const url=item.cover.length>COVER_LIMIT?await scaleImage(item.cover):item.cover;
+        out.push( { ...item,cover:await storeCover(url) });
+        changed=true;
+        continue
+      }
+      catch {}
+    }
+    out.push(item)
+  }
+  return changed?out:items
+}
+// 記録に残っている data URL の表紙を移す。更新日時は変えない（表紙の保存のしかたが変わるだけなので、同期しない）
+async function internSoon() {
+  const before=state.items,after=await internCovers(before);
+  if(after===before) return;
+  const swap=new Map(before.map((x,i)=>[x,after[i]]).filter(([x,y])=>x!==y));
+  commit(state.items.map(x=>swap.get(x)||x),true);
+  render()
+}
+// どの記録からも使われていない表紙を消す（ごみ箱の記録が使う表紙は残す）
+async function collectCovers() {
+  if(storeMode!=='idb') return;
+  const used=new Set(state.items.map(x=>x.cover?.hash).filter(Boolean));
+  await LocalStore.deleteCovers((await LocalStore.coverHashes()).filter(h=>!used.has(h)))
+}
+function tidyCovers() {
+  return storeMode==='idb'?internSoon():shrinkExistingCovers()
+}
+// 以前の大きな表紙画像を縮小して、保存容量と同期量を減らす（localStorage に保存しているとき）
 async function shrinkExistingCovers() {
   if(shrinking) return;
   shrinking=true;
   try {
     const changed=[];
-    for(const item of state.items.filter(x=>x.cover&&x.cover.length>COVER_LIMIT)) {
+    for(const item of state.items.filter(x=>typeof x.cover==='string'&&x.cover.length>COVER_LIMIT)) {
       try {
         const small=await scaleImage(item.cover);
         if(small.length<item.cover.length) changed.push( { ...item,cover:small,updatedAt:new Date().toISOString() } );
@@ -472,15 +571,16 @@ function render() {
   [...selection].filter(id=>!live.some(x=>x.id===id)).forEach(id=>selection.delete(id));
   list.slice(0,shownLimit).forEach(x=> {
     let n=tpl.content.cloneNode(true),img=n.querySelector('img'),letter=n.querySelector('.art span');
+    letter.textContent=[...x.title.trim()][0]||'？';
     if(x.cover) {
       img.loading='lazy';
       img.decoding='async';
-      img.src=x.cover;
       img.alt=x.title+'の表紙';
       img.hidden=false;
-      letter.hidden=true
+      letter.hidden=true;
+      // 表紙が見つからないときは、頭文字に戻す
+      showCover(img,x.cover,()=> { img.hidden=true; letter.hidden=false; })
     }
-    else letter.textContent=[...x.title.trim()][0]||'？';
     n.querySelector('.meta b').textContent=x.genre;
     n.querySelector('.meta strong').textContent='★ '+Number(x.rating).toFixed(1);
     n.querySelector('h3').textContent=x.title;
@@ -518,10 +618,10 @@ function preview(v) {
   box.textContent='表紙画像';
   if(v) {
     const img=document.createElement('img');
-    img.src=v;
     img.alt='選択した表紙';
     box.textContent='';
-    box.append(img)
+    box.append(img);
+    showCover(img,v,()=> { box.textContent='表紙画像'; })
   }
   $('#removeCover').hidden=!v
 }
@@ -873,7 +973,7 @@ async function applyWork(work) {
       if(token===workSearchId) $('#work-status').textContent=`「${work.title}」の情報を入力しました（表紙画像は見つかりませんでした）。`;
       return
     }
-    const cover=await fetchCover(url);
+    const cover=await storeCover(await fetchCover(url));
     if(token===workSearchId&&!state.cover) {
       state.cover=cover;
       preview(cover)
@@ -924,17 +1024,75 @@ function closeEditor(force=false) {
   if(!force&&dirty&&!confirm(DISCARD_MESSAGE)) return;
   $('#dialog').close()
 }
+// 記録を保存する。IndexedDB には、変わった記録だけを書く（書き込みは順番に、裏で行う）
 function commit(items,quiet=false) {
   const previous=state.items;
   state.items=items;
-  if(save()) return true;
-  state.items=previous;
-  if(!quiet) alert('保存できませんでした。ブラウザの保存容量が足りない可能性があります。バックアップを書き出して、不要な記録や画像を減らしてください。');
-  return false
+  if(storeMode==='loading') { bootDirty=true; return true; }
+  if(storeMode==='legacy') {
+    if(saveLegacy()) return true;
+    state.items=previous;
+    if(!quiet) alert(SAVE_FAILED);
+    return false
+  }
+  if(fullWrite) {
+    fullWrite=false;
+    persist(()=>LocalStore.replaceItems(items),quiet);
+    return true
+  }
+  const before=new Map(previous.map(x=>[x.id,x])),ids=new Set(items.map(x=>x.id));
+  const put=items.filter(x=>before.get(x.id)!==x),gone=previous.filter(x=>!ids.has(x.id)).map(x=>x.id);
+  if(put.length||gone.length) persist(()=>LocalStore.writeItems(put,gone),quiet);
+  return true
 }
-function backup(prefix='yokattana') {
+// 失敗したら知らせ、次の保存で全件を書き直す（書けなかった記録を取りこぼさないため）
+function persist(write,quiet=false) {
+  writes=writes.then(write).then(()=>channel?.postMessage('items')).catch(()=> {
+    fullWrite=true;
+    if(!quiet) alert(SAVE_FAILED)
+  });
+  return writes
+}
+function whenSaved() {
+  return writes
+}
+// ログアウトなどで、この端末の記録を消す。移行前のデータの控えも消す
+function clearLocalRecords() {
+  state.items=[];
+  if(storeMode==='idb') {
+    persist(()=>Promise.all([LocalStore.clearRecords(),LocalStore.deleteMeta('legacyBackup')]),true);
+    coverUrls.forEach(url=>URL.revokeObjectURL(url));
+    coverUrls.clear()
+  }
+  else if(storeMode==='legacy') saveLegacy()
+}
+// 保存領域を、ブラウザの判断で消さないよう頼む（最初に記録を保存したときに一度だけ）
+function askPersistence() {
+  if(storeMode!=='idb'||!navigator.storage?.persist) return;
+  try {
+    if(localStorage.getItem(PERSIST_KEY)) return;
+    localStorage.setItem(PERSIST_KEY,'1')
+  }
+  catch {}
+  navigator.storage.persisted().then(done=>done||navigator.storage.persist()).catch(()=> {})
+}
+function formatBytes(n) {
+  return n>=1e9?`${(n/1e9).toFixed(1)}GB`:`${(n/1e6).toFixed(1)}MB`
+}
+async function showStorageUsage() {
+  const box=$('#storage-usage');
+  if(storeMode!=='idb') {
+    box.textContent='この端末では、以前の方式（容量 約5MB）で保存しています。';
+    return
+  }
+  const [estimate,covers]=await Promise.all([navigator.storage?.estimate?.().catch(()=>null),LocalStore.coverHashes().catch(()=>[])]);
+  const size=estimate?.usage!=null?`。使用量 約${formatBytes(estimate.usage)}${estimate.quota?`（使える量 約${formatBytes(estimate.quota)}）`:''}`:'';
+  box.textContent=`この端末の保存：記録${liveItems().length}件・表紙${covers.length}枚${size}`
+}
+async function backup(prefix='yokattana') {
+  const items=await Promise.all(liveItems().map(withInlineCover));
   let u=URL.createObjectURL(new Blob([JSON.stringify( {
-    version:1,exportedAt:new Date().toISOString(),items:liveItems()
+    version:1,exportedAt:new Date().toISOString(),items
   },null,2)], {
     type:'application/json'
   })),a=document.createElement('a');
@@ -1002,7 +1160,7 @@ $('#cover').onchange=async x=> {
   const f=x.target.files[0];
   if(!f) return;
   try {
-    state.cover=await readCover(f);
+    state.cover=await storeCover(await readCover(f));
     dirty=true;
     preview(state.cover)
   }
@@ -1027,7 +1185,8 @@ $('#form').onsubmit=x=> {
   markPending([entry]);
   syncItem(entry);
   closeEditor(true);
-  render()
+  render();
+  askPersistence()
 };
 $('#delete').onclick=()=> {
   let id=$('#id').value,old=state.items.find(x=>x.id===id);
@@ -1073,6 +1232,7 @@ $('#export-csv').onclick=exportCsv;
 $('#import-data').onclick=()=>$('#file').click();
 $('#open-data').onclick=()=> {
   $('#account-section').hidden=!currentUser;
+  showStorageUsage();
   $('#data-dialog').showModal()
 };
 $('#close-data').onclick=()=>$('#data-dialog').close();
@@ -1164,13 +1324,13 @@ async function readText(file) {
   try { return new TextDecoder('utf-8', { fatal:true }).decode(buffer); }
   catch { return new TextDecoder('shift_jis').decode(buffer); }
 }
-function importJson(text) {
+async function importJson(text) {
   const o=JSON.parse(text),a=Array.isArray(o)?o:o.items;
   if(!Array.isArray(a)) throw 0;
   const imported=a.map(normalizeItem).filter(Boolean);
   if(!imported.length&&a.length) throw 0;
   if(!confirm(`${imported.length}件のデータで現在の記録を置き換えます。置き換える前の記録は、バックアップとして自動で保存し、ごみ箱にも${TRASH_DAYS}日間残ります。よろしいですか？`)) return;
-  if(liveItems().length) backup('yokattana-before-import');
+  if(liveItems().length) await backup('yokattana-before-import');
   const now=new Date().toISOString(),ids=new Set(imported.map(x=>x.id));
   // 読み込みに含まれない既存の記録は、ごみ箱へ移す
   const removed=state.items.filter(x=>!x.deleted&&!ids.has(x.id)).map(x=>( { ...x,deleted:true,updatedAt:now } ));
@@ -1180,7 +1340,7 @@ function importJson(text) {
   markPending([...removed,...next]);
   syncItems([...removed,...next]);
   render();
-  shrinkExistingCovers()
+  tidyCovers()
 }
 function importCsv(text) {
   const items=csvItems(text);
@@ -1202,7 +1362,7 @@ $('#file').onchange=async x=> {
   if(!f) return;
   try {
     const text=await readText(f);
-    if(/^[\[{]/.test(text.replace(/^\ufeff/,'').trimStart())) importJson(text);
+    if(/^[\[{]/.test(text.replace(/^\ufeff/,'').trimStart())) await importJson(text);
     else importCsv(text);
     if($('#data-dialog').open) $('#data-dialog').close()
   }
@@ -1655,20 +1815,65 @@ if('serviceWorker' in navigator&&location.protocol==='https:') {
   window.addEventListener('load',()=> { navigator.serviceWorker.register(trusted.createScriptURL('sw.js')).catch(()=> {}); });
 }
 
-// 別のタブでの変更を取り込む（編集中は触らない）
+// 別のタブでの変更を取り込む（編集中は描き直さない）
+if(channel) channel.onmessage=async()=> {
+  if(storeMode!=='idb') return;
+  try { state.items=mergeItems(state.items,(await LocalStore.loadItems()).map(normalizeItem).filter(Boolean)); }
+  catch { return; }
+  if(!$('#dialog').open) render()
+};
 window.addEventListener('storage',event=> {
-  if(event.key!==KEY||!event.newValue) return;
-  state.items=mergeItems(state.items,load());
+  if(storeMode!=='legacy'||event.key!==KEY||!event.newValue) return;
+  state.items=mergeItems(state.items,loadLegacy());
   if(!$('#dialog').open) render()
 });
 window.addEventListener('online',()=> { updateSyncStatus(); flushPending(); });
 window.addEventListener('offline',()=>updateSyncStatus());
 document.addEventListener('visibilitychange',()=> { if(document.visibilityState==='visible') flushPending(); });
 setInterval(flushPending,60000);
-{
-  const next=compactTrash(state.items),changed=next.filter((x,i)=>x!==state.items[i]);
-  if(changed.length) commit(next,true)
+// localStorage の記録を、一度だけ IndexedDB に移す。全件が移ったのを確かめてから localStorage を空ける。
+// 移す前のデータは、控えとして IndexedDB に30日間残す。途中で失敗したら、localStorage のまま使い続ける
+async function migrateLegacy() {
+  const raw=localStorage.getItem(KEY),done=await LocalStore.getMeta('legacyMigratedAt');
+  if(done) {
+    if(raw!==null) localStorage.removeItem(KEY);
+    if(Date.now()-done>LEGACY_KEEP_DAYS*86400000) await LocalStore.deleteMeta('legacyBackup');
+    return
+  }
+  if(raw!==null) {
+    const items=await internCovers(loadLegacy());
+    const existing=(await LocalStore.loadItems()).map(normalizeItem).filter(Boolean);
+    await LocalStore.writeItems(mergeItems(existing,items));
+    const saved=new Map((await LocalStore.loadItems()).map(x=>[x.id,x]));
+    if(!items.every(x=>saved.has(x.id))) throw new Error('移した件数が合いません');
+    for(const item of items) {
+      if(item.cover?.hash&&!await LocalStore.getCover(item.cover.hash)) throw new Error('表紙が移っていません');
+    }
+    await LocalStore.setMeta('legacyBackup',raw)
+  }
+  await LocalStore.setMeta('legacyMigratedAt',Date.now());
+  if(raw!==null) localStorage.removeItem(KEY)
 }
-render();
-initializeCloud();
-shrinkExistingCovers()
+async function boot() {
+  try {
+    await LocalStore.open();
+    storeMode='idb';
+    await migrateLegacy();
+    // 起動中に保存された記録があれば、そちらも残す
+    const stored=(await LocalStore.loadItems()).map(normalizeItem).filter(Boolean);
+    state.items=mergeItems(stored,state.items);
+    if(bootDirty) persist(()=>LocalStore.writeItems(state.items),true);
+    collectCovers().catch(()=> {})
+  }
+  catch {
+    storeMode='legacy';
+    state.items=mergeItems(loadLegacy(),state.items);
+    if(bootDirty) saveLegacy()
+  }
+  const next=compactTrash(state.items),changed=next.filter((x,i)=>x!==state.items[i]);
+  if(changed.length) commit(next,true);
+  render();
+  await initializeCloud();
+  tidyCovers()
+}
+window.appReady=boot();
