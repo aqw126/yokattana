@@ -736,7 +736,8 @@ function render() {
     quote.replaceChildren(...maskedSpoilers(x.quote));
     quote.hidden=!x.quote;
     n.querySelector('.spoiler-badge').hidden=!x.spoiler;
-    n.querySelector('footer small').textContent=x.readAt?date(x.readAt+'T00:00:00')+' に読んだ':date(x.createdAt)+' に追加';
+    // 「読んだ」は映画・ゲームなどに合わないので、体験した日は日付だけにする
+    n.querySelector('footer small').textContent=x.readAt?date(x.readAt+'T00:00:00'):date(x.createdAt)+' 追加';
     const card=n.querySelector('article'),pick=n.querySelector('.pick'),box=n.querySelector('.pick-box');
     pick.hidden=!picking;
     box.checked=selection.has(x.id);
