@@ -853,3 +853,19 @@ test('評価の絞り込み: 件数は記録を変えると更新され、選ん
   eq(document.querySelector('#rating-filter input[value="4.0"]').parentElement.textContent, '★4.0〜4.4（2件）');
   assert(document.querySelector('#rating-filter input[value="4.0"]').checked, 'still selected');
 });
+
+test('編集を開いても、題名に入力欄を合わせない（スマホでキーボードが出ないように）', () => {
+  resetApp();
+  setItems([make({ title: '火車' })]);
+  openEditor();
+  eq(document.activeElement.id, 'title');
+  closeEditor(true);
+  openEditor(state.items[0]);
+  assert(document.activeElement.id !== 'title' && !/^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName), 'no text field focused');
+  closeEditor(true);
+});
+
+test('評価のつまみには、入力欄の余白を付けない（3.0・5.0 で端まで届く）', () => {
+  const cs = getComputedStyle($('#rating'));
+  eq([cs.paddingLeft, cs.paddingRight, cs.borderLeftWidth], ['0px', '0px', '0px']);
+});
