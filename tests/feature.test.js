@@ -214,7 +214,7 @@ function noisyCover(width = 600, height = 900) {
   return c.toDataURL('image/png');
 }
 
-test('共有: 「表紙を含める」を選んだときだけ、表紙を小さな JPEG にして含める', async () => {
+test('共有: 「表紙を含める」を選んだときだけ、表紙を小さな WebP にして含める', async () => {
   resetApp();
   currentUser = { id: 'u1' };
   const cover = noisyCover();
@@ -228,7 +228,7 @@ test('共有: 「表紙を含める」を選んだときだけ、表紙を小さ
   $('#share-covers').checked = true;
   await createShare();
   const items = [...fakeCloud.shares.values()][0].payload.items, withCover = items.find(x => x.title === '表紙あり');
-  assert(/^data:image\/jpeg;base64,/.test(withCover.cover) && withCover.cover.length <= SHARE_COVER_MAX, 'small jpeg');
+  assert(/^data:image\/webp;base64,/.test(withCover.cover) && withCover.cover.length <= SHARE_COVER_MAX, 'small webp');
   eq(items.find(x => x.title === '表紙なし').cover, undefined);
   openShare(visible(), 't', 'c');
   eq($('#share-covers').checked, false);
@@ -244,16 +244,17 @@ test('共有: 100件に表紙を含めても、共有の上限（1MB）に収ま
   assert(new Blob([JSON.stringify(payload)]).size < 1000000, 'under the 1MB limit');
 });
 
-test('閲覧ページ: 表紙は JPEG の data URL だけを表示し、それ以外は頭文字にする', () => {
+test('閲覧ページ: 表紙は WebP か JPEG の data URL だけを表示し、それ以外は頭文字にする', () => {
   const root = document.createElement('div');
   renderShare(root, { payload: { title: 't', items: [
     { title: '火車', genre: '本', rating: 4.6, tags: [], cover: 'data:image/jpeg;base64,/9j/AAAA' },
+    { title: '模倣犯', genre: '本', rating: 4, tags: [], cover: 'data:image/webp;base64,UklGRgAA' },
     { title: '外の画像', genre: '本', rating: 4, tags: [], cover: 'https://evil.example/x.jpg' },
     { title: '図形', genre: '本', rating: 4, tags: [], cover: 'data:image/svg+xml;base64,AAAA' }
   ] } });
   const arts = [...root.querySelectorAll('.share-art')];
-  eq(arts.map(a => a.querySelector('img')?.getAttribute('src') || a.textContent), ['data:image/jpeg;base64,/9j/AAAA', '外', '図']);
-  eq([...root.querySelectorAll('article')].map(a => a.classList.contains('top')), [true, false, false]);
+  eq(arts.map(a => a.querySelector('img')?.getAttribute('src') || a.textContent), ['data:image/jpeg;base64,/9j/AAAA', 'data:image/webp;base64,UklGRgAA', '外', '図']);
+  eq([...root.querySelectorAll('article')].map(a => a.classList.contains('top')), [true, false, false, false]);
   eq(root.querySelector('.share-stars').getAttribute('aria-label'), '評価 4.6');
 });
 
@@ -935,4 +936,14 @@ test('ゲーム: Steam にない元のゲームは、同じ開発元の完全版
   const alone = { Q1: { id: 'Q1', labels: { ja: { value: 'X' } }, claims: { ...wdClaim('P31', 'Q7889'), ...wdClaim('P178', 'Q100'), ...wdClaim('P4969', 'Q74109258') } } };
   await withFetch(url => new Response(JSON.stringify({ entities: derived })), () => borrowSteamIds(alone));
   eq(parseWikidata(alone)[0].cover, '');
+});
+
+test('表紙: 長辺450px の WebP で保存し、WebP を書き出せないブラウザでは JPEG にする', async () => {
+  const url = await scaleImage(noisyCover(600, 900));
+  const img = await new Promise(resolve => { const i = new Image(); i.onload = () => resolve(i); i.src = url; });
+  eq([url.slice(0, 15), Math.max(img.width, img.height)], ['data:image/webp', 450]);
+  assert(url.length <= COVER_LIMIT, 'within the limit');
+  const c = document.createElement('canvas');
+  c.width = c.height = 4;
+  assert(encodeCanvas(c, 0.7, false).startsWith('data:image/jpeg'), 'jpeg fallback');
 });
