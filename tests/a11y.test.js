@@ -162,3 +162,15 @@ test('a11y: 選択肢の一覧は、ライト・ダークのどちらでも文�
     if (before === null) root.removeAttribute('data-theme'); else root.setAttribute('data-theme', before);
   }
 });
+
+test('PWA: マニフェストの PNG アイコン（192・512・maskable）と、各ページの apple-touch-icon が揃っている', async () => {
+  const manifest = await (await fetch('../manifest.webmanifest')).json();
+  const sizes = manifest.icons.filter(i => i.type === 'image/png').map(i => i.sizes + ':' + i.purpose).sort();
+  eq(sizes, ['192x192:any', '512x512:any', '512x512:maskable']);
+  for (const icon of manifest.icons) assert((await fetch('../' + icon.src)).ok, icon.src);
+  for (const page of ['index.html', 'guide.html', 'privacy.html', 'share.html']) {
+    const html = await (await fetch('../' + page)).text();
+    assert(html.includes('rel="apple-touch-icon" href="apple-touch-icon.png"'), page + ' apple-touch-icon');
+  }
+  assert((await fetch('../apple-touch-icon.png')).ok && (await fetch('../og-image.png')).ok, 'png files');
+});

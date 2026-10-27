@@ -3,7 +3,7 @@
 // 保存済みの内容がないときだけ、ネットワークを待つ。
 // 公開した新しい版は、この sw.js が変わることで届く（新しい版を保存し直し、app.js がトーストで知らせる）。
 // VERSION は tools/bump-version.py が更新する。
-const VERSION = '202610271818';
+const VERSION = '202610272306';
 const CACHE = 'yokattana-' + VERSION;
 // 版を固定しているので、中身は変わらない。保存済みならネットワークに問い合わせない
 const SUPABASE_JS = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js';
@@ -14,6 +14,10 @@ const ASSETS = [
   'tmdb-logo.svg',
   'manifest.webmanifest',
   'icon.svg',
+  'icon-192.png',
+  'icon-512.png',
+  'icon-maskable-512.png',
+  'apple-touch-icon.png',
   'privacy.html',
   'guide.html',
   'share.html'
