@@ -54,7 +54,7 @@ TMDB ……………… 映画・ドラマの作品情報とポスター（キ�
 | **Clipboard / Web Share API** | リンクのコピーと、スマホの共有メニュー | `app.js:1946`（`copyText`） |
 | **Intl.DateTimeFormat** | 日本語の日付表示 | `app.js` の `date()` |
 | **Web App Manifest** | ホーム画面に追加するときの名前・アイコン | `manifest.webmanifest` |
-| **Service Worker** | 通信を仲介し、オフラインでも開けるようにする | `sw.js:21`（install）、`:30`（activate）、`:38`（fetch）、登録は `app.js:2053` |
+| **Service Worker** | 通信を仲介し、オフラインでも開けるようにする。保存済みの内容をすぐ返して起動を速くし、裏で最新に取り直す | `sw.js:24`（install）、`:34`（activate）、`:42`（fetch）、登録は `app.js:2054` |
 
 ### 画面の描画のしかた
 - フレームワークを使わず、`render()` が、記録の配列から、カードを作り直します（`app.js:687`）。

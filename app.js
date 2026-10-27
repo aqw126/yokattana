@@ -2053,6 +2053,9 @@ $('#close-share').onclick=()=>$('#share-dialog').close();
 // オフラインでも開けるように、Service Worker を登録する（https のときだけ）
 if('serviceWorker' in navigator&&location.protocol==='https:') {
   window.addEventListener('load',()=> { navigator.serviceWorker.register(trusted.createScriptURL('sw.js')).catch(()=> {}); });
+  // 表示中の画面は保存済みの版なので、新しい版が届いたら知らせる（初めて開いたときは知らせない）
+  const hadWorker=!!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener('controllerchange',()=> { if(hadWorker) showToast('新しい版があります。再読み込みすると反映されます。'); });
 }
 
 // 別のタブでの変更を取り込む（編集中は描き直さない）
