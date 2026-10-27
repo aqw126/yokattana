@@ -1116,7 +1116,8 @@ function openEditor(x) {
   }
   renderGenreChips();
   $('#dialog').showModal();
-  $('#title').focus()
+  // 編集では、題名に入力欄を合わせない（スマホでキーボードが勝手に出るため）。閉じるボタンに合う
+  if(!x) $('#title').focus()
 }
 const DISCARD_MESSAGE='保存していない変更があります。破棄して閉じますか？';
 function closeEditor(force=false) {
