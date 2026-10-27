@@ -607,7 +607,7 @@ test('Wikidata: 検索から候補を作るまで（名前は2回目の問い合
     if (params.get('props') === 'labels|claims') return new Response(JSON.stringify({ entities: { Q1: WD_ENTITIES.Q1, Q3: WD_ENTITIES.Q3 } }));
     return new Response(JSON.stringify({ entities: Object.fromEntries(Object.entries(WD_LABELS).map(([id, v]) => [id, { id, labels: { ja: { value: v } } }])) }));
   }, () => searchWikidata('test'));
-  eq(calls, ['wbsearchentities:', 'wbgetentities:labels|claims', 'wbgetentities:labels']);
+  eq(calls, ['wbsearchentities:', 'query:', 'wbgetentities:labels|claims', 'wbgetentities:labels']);
   eq(found.map(x => x.title), ['ゼルダの伝説 ブレス オブ ザ ワイルド', 'ショーシャンクの空に']);
 });
 
@@ -868,4 +868,71 @@ test('編集を開いても、題名に入力欄を合わせない（スマホ�
 test('評価のつまみには、入力欄の余白を付けない（3.0・5.0 で端まで届く）', () => {
   const cs = getComputedStyle($('#rating'));
   eq([cs.paddingLeft, cs.paddingRight, cs.borderLeftWidth], ['0px', '0px', '0px']);
+});
+
+// ---- ゲーム（検索の改善、Steam の画像、App Store） ----
+test('ゲーム: ジャンルは短い名前だけにし、RPG はまとめる', () => {
+  eq(['コンピュータRPG', 'アクションロールプレイングゲーム', 'サイバーパンクコンピュータゲーム', '性的少数者が登場するコンピュータゲーム', '文明崩壊後の世界が描かれたコンピュータゲーム', '育成シミュレーションゲーム', 'ビデオゲーム'].map(gameGenre),
+    ['RPG', 'アクションRPG', 'サイバーパンク', '', '', '育成シミュレーションゲーム', '']);
+});
+
+test('ゲーム: 英語の名前だけのゲームも出し、Steam の番号があれば縦長の画像（なければ横長）を使う', () => {
+  const entities = {
+    Q7: { id: 'Q7', labels: { en: { value: 'Elden Ring' } }, claims: { ...wdClaim('P31', 'Q7889'), ...wdClaim('P136', 'Q30'), P1733: [{ mainsnak: { datavalue: { value: '1245620' } } }] } },
+    Q8: { id: 'Q8', labels: { en: { value: 'Hades' } }, claims: { ...wdClaim('P31', 'Q7889'), P1733: [{ mainsnak: { datavalue: { value: '../x' } } }] } },
+    Q9: { id: 'Q9', labels: { en: { value: 'English Movie' } }, claims: wdClaim('P31', 'Q11424') }
+  };
+  const found = parseWikidata(entities, { Q30: 'コンピュータRPG' }, undefined, { Q7: 'エルデンリング' });
+  eq(found.map(x => [x.title, x.tags, x.cover]), [
+    ['エルデンリング', ['RPG'], `${STEAM_IMAGE}1245620/library_600x900.jpg`],
+    ['Hades', [], '']
+  ]);
+  eq(found[0].covers, [`${STEAM_IMAGE}1245620/header.jpg`]);
+});
+
+test('ゲーム: 縦長の画像が取れなければ、横長の画像を表紙にする', async () => {
+  resetApp();
+  openEditor();
+  const asked = [];
+  await withFetch(url => {
+    asked.push(url);
+    if (url.endsWith('library_600x900.jpg')) return new Response('', { status: 404 });
+    return new Response(dataUrlToBlob(noisyCover(60, 40)));
+  }, () => applyWork({ source: 'wikidata', kind: 'game', title: 'Old Game', author: '', tags: [], cover: `${STEAM_IMAGE}1/library_600x900.jpg`, covers: [`${STEAM_IMAGE}1/header.jpg`] }));
+  eq(asked, [`${STEAM_IMAGE}1/library_600x900.jpg`, `${STEAM_IMAGE}1/header.jpg`]);
+  assert(state.cover, 'cover from the fallback image');
+  $('#dialog').close();
+});
+
+test('App Store: ゲームで、題名が探した言葉で始まるものだけを出し、大きなアイコンを表紙にする', () => {
+  const found = parseAppStore({ results: [
+    { trackName: '原神-6周年', artistName: 'COGNOSPHERE PTE. LTD.', genreIds: ['6014', '7014', '6016'], genres: ['ゲーム', 'ロールプレイング', 'エンターテインメント'], artworkUrl100: 'https://is1-ssl.mzstatic.com/a/100x100bb.jpg', artworkUrl512: 'https://is1-ssl.mzstatic.com/a/512x512bb.jpg', releaseDate: '2020-09-28T00:00:00Z' },
+    { trackName: '原神 攻略マップ', artistName: '誰か', genreIds: ['6002'], genres: ['ユーティリティ'], artworkUrl100: 'https://is1-ssl.mzstatic.com/b/100x100bb.jpg' },
+    { trackName: 'まったく別のゲーム', artistName: '誰か', genreIds: ['6014'], genres: ['ゲーム'], artworkUrl100: 'https://is1-ssl.mzstatic.com/c/100x100bb.jpg' },
+    { trackName: '[777Real]パチスロ原神', artistName: '誰か', genreIds: ['6014'], genres: ['ゲーム'], artworkUrl100: 'https://is1-ssl.mzstatic.com/d/100x100bb.jpg' }
+  ] }, '原神');
+  eq(found.map(x => [x.source, x.kind, x.title, x.year, x.tags, x.cover]), [
+    ['appstore', 'game', '原神', 2020, ['COGNOSPHERE PTE. LTD.', 'ロールプレイング'], 'https://is1-ssl.mzstatic.com/a/600x600bb.jpg']
+  ]);
+});
+
+test('ゲーム: CSP で Steam の画像の取得先を許可している', async () => {
+  const csp = (await indexHtml()).match(/Content-Security-Policy" content="([^"]+)"/)[1];
+  assert(/img-src[^;]*https:\/\/shared\.akamai\.steamstatic\.com/.test(csp) && /connect-src[^;]*https:\/\/shared\.akamai\.steamstatic\.com/.test(csp), 'steam allowed');
+});
+
+test('ゲーム: Steam にない元のゲームは、同じ開発元の完全版の Steam の番号を借りる（別の会社の外伝は使わない）', async () => {
+  const steam = id => [{ mainsnak: { datavalue: { value: id } } }];
+  const entities = {
+    Q15225985: { id: 'Q15225985', labels: { ja: { value: 'ペルソナ5' } }, claims: { ...wdClaim('P31', 'Q7889'), ...wdClaim('P178', 'Q100'), ...wdClaim('P4969', 'Q74109258', 'Q63385672') } }
+  };
+  const derived = {
+    Q74109258: { id: 'Q74109258', claims: { ...wdClaim('P31', 'Q7889'), ...wdClaim('P178', 'Q200'), ...wdClaim('P144', 'Q15225985'), P1733: steam('1382330') } },
+    Q63385672: { id: 'Q63385672', claims: { ...wdClaim('P31', 'Q7889'), ...wdClaim('P178', 'Q100'), ...wdClaim('P144', 'Q15225985'), P1733: steam('1687950') } }
+  };
+  await withFetch(url => new Response(JSON.stringify({ entities: derived })), () => borrowSteamIds(entities));
+  eq(parseWikidata(entities)[0].cover, `${STEAM_IMAGE}1687950/library_600x900.jpg`);
+  const alone = { Q1: { id: 'Q1', labels: { ja: { value: 'X' } }, claims: { ...wdClaim('P31', 'Q7889'), ...wdClaim('P178', 'Q100'), ...wdClaim('P4969', 'Q74109258') } } };
+  await withFetch(url => new Response(JSON.stringify({ entities: derived })), () => borrowSteamIds(alone));
+  eq(parseWikidata(alone)[0].cover, '');
 });
