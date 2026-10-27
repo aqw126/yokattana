@@ -796,6 +796,17 @@ function tmdbKey() {
 }
 // 本の表紙は Apple Books の検索で探す（国立国会図書館サーチには表紙がないため）
 const ITUNES='https://itunes.apple.com/search';
+// ゲームの画像。Steam で売っているものは、Wikidata にある Steam の番号（P1733）から縦長の画像を取る。
+// 古いゲームには縦長の画像がないので、そのときは横長の画像にする
+const STEAM_IMAGE='https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/';
+function steamCovers(appId) {
+  return /^\d{1,10}$/.test(String(appId))?[`${STEAM_IMAGE}${appId}/library_600x900.jpg`,`${STEAM_IMAGE}${appId}/header.jpg`]:[]
+}
+// Wikidata のゲームのジャンルは「性的少数者が登場するコンピュータゲーム」のような説明も混ざるので、短いジャンル名だけにする
+function gameGenre(name) {
+  const text=String(name||'').replace(/^コンピュータRPG$/,'RPG').replace(/ロールプレイングゲーム$/,'RPG').replace(/(コンピュータ|コンピューター|ビデオ)ゲーム$/,'');
+  return text&&text.length<=16&&!/[がをにの]/.test(text)?text:''
+}
 let workSearchId=0;
 function workKey(v) {
   return String(v||'').normalize('NFKC').replace(/[\s・:：\-－]/g,'').toLocaleLowerCase('ja')
@@ -851,11 +862,14 @@ function wikidataApi(params) {
     return r.json()
   })
 }
-function parseWikidata(entities,labels= {},kinds=Object.keys(WIKIDATA_KINDS)) {
+// aliases: 検索で一致した日本語の別名（日本語の名前がないとき、「エルデンリング」のように探した名前で出す）
+function parseWikidata(entities,labels= {},kinds=Object.keys(WIKIDATA_KINDS),aliases= {}) {
   const ids=(entity,prop)=>(entity.claims?.[prop]||[]).map(x=>x.mainsnak?.datavalue?.value?.id).filter(Boolean);
   return Object.values(entities||{}).map(entity=> {
-    const types=ids(entity,'P31'),title=entity.labels?.ja?.value||'';
+    const types=ids(entity,'P31');
     const kind=Object.keys(WIKIDATA_KINDS).find(k=>types.some(t=>WIKIDATA_KINDS[k].includes(t)));
+    // ゲームは「ELDEN RING」のように英語の名前だけのことが多いので、英語の名前も使う
+    const title=entity.labels?.ja?.value||aliases[entity.id]||(kind==='game'?entity.labels?.en?.value:'')||'';
     if(!title||!kinds.includes(kind)||types.some(t=>WIKIDATA_ANIME.includes(t))) return null;
     const time=(entity.claims?.P577||[]).map(x=>x.mainsnak?.datavalue?.value?.time).find(Boolean);
     // 映画・ドラマは監督（なければ脚本）、ゲームは開発元
@@ -863,18 +877,26 @@ function parseWikidata(entities,labels= {},kinds=Object.keys(WIKIDATA_KINDS)) {
     const name=id=>labels[id]?personName(labels[id]):'';
     const author=people.map(name).find(Boolean)||'';
     // 「テレビドラマシリーズ」「ビデオゲーム」のような、種類を言い直しただけのジャンルは除く
-    const genreTags=ids(entity,'P136').map(name).filter(x=>x&&!/^(テレビ)?(ドラマ|映画|ビデオゲーム|ゲーム)(シリーズ)?$/.test(x)).slice(0,3);
+    const genreTags=ids(entity,'P136').map(name).map(x=>kind==='game'?gameGenre(x):x).filter(x=>x&&!/^(テレビ)?(ドラマ|映画|ビデオゲーム|ゲーム)(シリーズ)?$/.test(x)).slice(0,3);
+    const [cover,...covers]=kind==='game'?steamCovers((entity.claims?.P1733||[]).map(x=>x.mainsnak?.datavalue?.value).find(Boolean)):[];
     return {
       source:'wikidata',kind,title,author,year:time?Number(time.slice(1,5))||null:null,
-      tags:[...new Set([author,...genreTags].filter(Boolean))].slice(0,WORK_TAGS),thumb:'',cover:''
+      tags:[...new Set([author,...genreTags].filter(Boolean))].slice(0,WORK_TAGS),thumb:cover||'',cover:cover||'',covers
     }
   }).filter(Boolean)
 }
 async function searchWikidata(query,kinds) {
-  const found=await wikidataApi( { action:'wbsearchentities',search:query,language:'ja',uselang:'ja',type:'item',limit:'12' });
-  const ids=(found.search||[]).map(x=>x.id);
+  const games=!kinds||kinds.includes('game');
+  // 名前の検索は、ゲーム以外（神話の「ハデス」など）で埋まることがあるので、ゲームは本文の検索でも探す
+  const [found,gameHits]=await Promise.all([
+    wikidataApi( { action:'wbsearchentities',search:query,language:'ja',uselang:'ja',type:'item',limit:'12' }),
+    games?wikidataApi( { action:'query',list:'search',srsearch:`${query} haswbstatement:P31=Q7889`,srnamespace:'0',srlimit:'5' }).catch(()=>null):null
+  ]);
+  const aliases= {};
+  (found.search||[]).forEach(x=> { if(x.match?.language==='ja'&&x.match.text) aliases[x.id]=x.match.text; });
+  const ids=[...new Set([...(found.search||[]).map(x=>x.id),...(gameHits?.query?.search||[]).map(x=>x.title)])].filter(id=>/^Q\d+$/.test(id)).slice(0,16);
   if(!ids.length) return[];
-  const { entities }=await wikidataApi( { action:'wbgetentities',ids:ids.join('|'),props:'labels|claims',languages:'ja' });
+  const { entities }=await wikidataApi( { action:'wbgetentities',ids:ids.join('|'),props:'labels|claims',languages:'ja|en' });
   // 監督・開発元・ジャンルの名前を、まとめて日本語で取る
   const refs=new Set();
   Object.values(entities||{}).forEach(entity=>['P57','P58','P178','P136'].forEach(prop=>(entity.claims?.[prop]||[]).slice(0,3).forEach(x=> { const id=x.mainsnak?.datavalue?.value?.id; if(id) refs.add(id); })));
@@ -888,7 +910,25 @@ async function searchWikidata(query,kinds) {
   }
   // 検索の並び（関連の強い順）を保つ
   const order=new Map(ids.map((id,i)=>[id,i]));
-  return parseWikidata(Object.fromEntries(Object.entries(entities||{}).sort((a,b)=>order.get(a[0])-order.get(b[0]))),labels,kinds).slice(0,6)
+  return parseWikidata(Object.fromEntries(Object.entries(entities||{}).sort((a,b)=>order.get(a[0])-order.get(b[0]))),labels,kinds,aliases).slice(0,6)
+}
+// スマホのゲームは App Store で探す（アイコンを表紙にする）。ゲームの分類（6014）で、題名が探した言葉で始まるものだけ（攻略・ファンのアプリなどを除く）
+function parseAppStore(json,query) {
+  const q=workKey(query);
+  return(json?.results||[]).filter(r=>r.trackName&&r.artworkUrl100&&(r.genreIds||[]).includes('6014')&&workKey(r.trackName).startsWith(q)).slice(0,3).map(r=> {
+    const author=String(r.artistName||'').trim(),genreTags=(r.genres||[]).filter(g=>g!=='ゲーム'&&g!=='Games'&&g!=='エンターテインメント').slice(0,2);
+    // 「原神-6周年」のような、催しの言葉を後ろに付けた名前は、区切りの前だけにする
+    const base=r.trackName.split(/\s*[-－–—:：|｜〜~【（(]/)[0].trim(),title=workKey(base).startsWith(q)?base:r.trackName.trim();
+    return {
+      source:'appstore',kind:'game',title,author,year:Number(String(r.releaseDate||'').slice(0,4))||null,
+      tags:[...new Set([author,...genreTags].filter(Boolean))].slice(0,WORK_TAGS),thumb:r.artworkUrl100,cover:String(r.artworkUrl512||r.artworkUrl100).replace(/\/\d+x\d+bb\./,'/600x600bb.')
+    }
+  })
+}
+async function searchAppStore(query) {
+  const r=await fetch(`${ITUNES}?${new URLSearchParams( { term:query,country:'jp',media:'software',entity:'software',limit:'15' })}`);
+  if(!r.ok) throw new Error(`iTunes ${r.status}`);
+  return parseAppStore(await r.json(),query)
 }
 function parseTmdb(json) {
   return(json?.results||[]).filter(r=>r.media_type==='movie'||r.media_type==='tv').filter(r=> {
@@ -998,7 +1038,7 @@ function workOption(work) {
   }
   else art.textContent=WORK_KIND_NAMES[work.kind].slice(0,1);
   name.textContent=work.title;
-  meta.textContent=[WORK_KIND_NAMES[work.kind],work.year,work.author].filter(Boolean).join('・');
+  meta.textContent=[WORK_KIND_NAMES[work.kind],work.source==='appstore'?'App Store':'',work.year,work.author].filter(Boolean).join('・');
   info.append(name,meta);
   button.append(art,info);
   button.onclick=()=>applyWork(work);
@@ -1015,7 +1055,7 @@ async function runWorkSearch() {
     return
   }
   $('#work-status').textContent='検索しています…';
-  const searches=tmdbKey()?[searchAniList(query),searchAppleBooks(query),searchTmdb(query),searchWikidata(query,['game']),searchNdl(query)]:[searchAniList(query),searchAppleBooks(query),searchWikidata(query),searchNdl(query)];
+  const searches=tmdbKey()?[searchAniList(query),searchAppleBooks(query),searchTmdb(query),searchWikidata(query,['game']),searchAppStore(query),searchNdl(query)]:[searchAniList(query),searchAppleBooks(query),searchWikidata(query),searchAppStore(query),searchNdl(query)];
   // 同じ作品（題名と作者が同じ）が別の検索先からも届いたら、先に届いた方だけを出す
   const seen=new Set();
   let found=0,failed=0,left=searches.length;
@@ -1072,7 +1112,14 @@ async function applyWork(work) {
       if(token===workSearchId) $('#work-status').textContent=`「${work.title}」の情報を入力しました（表紙画像は見つかりませんでした）。`;
       return
     }
-    const cover=await storeCover(await fetchCover(url));
+    // 1枚目が取れなければ、次の候補（Steam の横長の画像など）を試す
+    let image,failure;
+    for(const candidate of [url,...(work.covers||[])]) {
+      try { image=await fetchCover(candidate); break; }
+      catch(error) { failure=error; }
+    }
+    if(!image) throw failure;
+    const cover=await storeCover(image);
     if(token===workSearchId&&!state.cover) {
       state.cover=cover;
       preview(cover)

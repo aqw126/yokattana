@@ -23,6 +23,7 @@ GitHub ………… ソースの管理・自動テスト・定期実行（Action
 国立国会図書館サーチ … 本の作品情報（自動入力）
 AniList ………… 漫画・アニメの作品情報と表紙画像（自動入力）
 Wikidata ………… 映画・ドラマ・ゲームの作品情報（自動入力）
+Steam / App Store … ゲームの表紙（自動入力）
 Apple（iTunes Search API）… 本の作品情報と表紙画像（自動入力）
 TMDB ……………… 映画・ドラマの作品情報とポスター（キーを設定したときだけ）
 ```
@@ -41,19 +42,19 @@ TMDB ……………… 映画・ドラマの作品情報とポスター（キ�
 | **CSS `:focus-visible`** | キーボード操作時の枠線 | `styles.css:695` |
 | **JavaScript（素のまま）** | すべての動作。ビルドも外部の枠組みもなし | `app.js`（記録）、`share.js`（共有ページ）、`theme.js`（テーマと、埋め込みの防止） |
 | **IndexedDB** | ブラウザ内のデータベース（容量は通常、ディスクの空きに応じて数百MB以上）。記録（items）・表紙（covers、画像のまま）・設定（meta）を分けて持つ。表紙は中身の SHA-256 を名前にして、記録には `{ hash }` だけを入れる | `store.js`、`app.js:1028`（`commit`。変わった記録だけを書く） |
-| **localStorage からの移行** | 以前の版の記録を、最初に開いたときに一度だけ移す。全件と表紙が移ったのを確かめてから localStorage を空け、移す前のデータは30日間控えとして残す。IndexedDB を使えなければ、以前の localStorage のまま動く | `app.js:1941`（`migrateLegacy`）、`:1962`（`boot`） |
+| **localStorage からの移行** | 以前の版の記録を、最初に開いたときに一度だけ移す。全件と表紙が移ったのを確かめてから localStorage を空け、移す前のデータは30日間控えとして残す。IndexedDB を使えなければ、以前の localStorage のまま動く | `app.js:2016`（`migrateLegacy`）、`:2037`（`boot`） |
 | **localStorage** | 小さな設定だけ（テーマ、同期待ち、ログイン中のアカウントの印） | `app.js:1`（キー名） |
 | **BroadcastChannel** | 別のタブで保存したことを知らせ合い、一覧を取り込む | `app.js` の `channel` |
-| **StorageManager** | `persist()` で保存領域を消さないよう頼み、`estimate()` で使用量を出す | `app.js:1170`（`askPersistence`）、`:1182`（`showStorageUsage`） |
+| **StorageManager** | `persist()` で保存領域を消さないよう頼み、`estimate()` で使用量を出す | `app.js:1218`（`askPersistence`）、`:1230`（`showStorageUsage`） |
 | **Canvas API** | 表紙画像を、長辺600pxのJPEGに縮小 | `app.js:350`（`scaleImage`）、`:371`（`readCover`） |
-| **fetch + 外部の作品データ** | 作品の自動入力。本は国立国会図書館サーチ（OpenSearch・XML）、漫画・アニメは AniList（GraphQL）、映画・ドラマ・ゲームは Wikidata（MediaWiki API）を、キー不要で直接呼ぶ。本の検索は遅いので、届いた順に候補を出す。表紙は画像を取得して Canvas で縮小し、data URL にして保存 | `app.js:1008`（`runWorkSearch`）。詳しくは「7. 作品の自動入力」 |
-| **Blob / URL.createObjectURL** | JSON・CSV をファイルとして書き出す | `app.js:1192`（`backup`）、`:1352`（`exportCsv`） |
-| **TextDecoder** | UTF-8 で読めなければ Shift_JIS で読み直す | `app.js:1422`（`readText`） |
-| **Web Crypto** | 記録のID（`randomUUID`）と、共有リンクの乱数（128ビット） | `app.js:314`、`:1764`（`makeShareToken`） |
-| **Clipboard / Web Share API** | リンクのコピーと、スマホの共有メニュー | `app.js:1821`（`copyText`） |
+| **fetch + 外部の作品データ** | 作品の自動入力。本は国立国会図書館サーチ（OpenSearch・XML）、漫画・アニメは AniList（GraphQL）、映画・ドラマ・ゲームは Wikidata（MediaWiki API）を、キー不要で直接呼ぶ。本の検索は遅いので、届いた順に候補を出す。表紙は画像を取得して Canvas で縮小し、data URL にして保存 | `app.js:1048`（`runWorkSearch`）。詳しくは「7. 作品の自動入力」 |
+| **Blob / URL.createObjectURL** | JSON・CSV をファイルとして書き出す | `app.js:1240`（`backup`）、`:1400`（`exportCsv`） |
+| **TextDecoder** | UTF-8 で読めなければ Shift_JIS で読み直す | `app.js:1470`（`readText`） |
+| **Web Crypto** | 記録のID（`randomUUID`）と、共有リンクの乱数（128ビット） | `app.js:314`、`:1830`（`makeShareToken`） |
+| **Clipboard / Web Share API** | リンクのコピーと、スマホの共有メニュー | `app.js:1887`（`copyText`） |
 | **Intl.DateTimeFormat** | 日本語の日付表示 | `app.js` の `date()` |
 | **Web App Manifest** | ホーム画面に追加するときの名前・アイコン | `manifest.webmanifest` |
-| **Service Worker** | 通信を仲介し、オフラインでも開けるようにする | `sw.js:21`（install）、`:30`（activate）、`:38`（fetch）、登録は `app.js:1919` |
+| **Service Worker** | 通信を仲介し、オフラインでも開けるようにする | `sw.js:21`（install）、`:30`（activate）、`:38`（fetch）、登録は `app.js:1994` |
 
 ### 画面の描画のしかた
 - フレームワークを使わず、`render()` が、記録の配列から、カードを作り直します（`app.js:646`）。
@@ -72,7 +73,7 @@ Supabase は、PostgreSQL を中心にした、オープンソースの BaaS で
 | **PostgreSQL** | データベース本体。表は `library_items`（記録）と `shares`（共有） | `supabase-schema.sql:1`、`:49` |
 | **jsonb** | 記録の中身を、JSON のまま1列に保存できる型。項目を増やしても、表を変えずに済む | `library_items.payload` |
 | **Auth** | ログインの管理。Google でログインすると、**JWT**（本人の証明書）が発行され、ブラウザに保存される | `app.js:190`（`onAuthStateChange`）、`:192`（`getSession`） |
-| **PostgREST** | 表を、自動で REST API にする仕組み。`from('...').upsert()` は、この API を呼んでいる | `app.js:81`（記録の送信）、`:122`（取得）、`:1849`（共有の作成） |
+| **PostgREST** | 表を、自動で REST API にする仕組み。`from('...').upsert()` は、この API を呼んでいる | `app.js:81`（記録の送信）、`:122`（取得）、`:1920`（共有の作成） |
 | **RLS（行レベルセキュリティ）** | 「自分の行だけ読み書きできる」を、データベース側で強制 | `supabase-schema.sql:11`〜（記録）、`:61`〜（共有） |
 | **RPC（SQL 関数）** | `get_share()`（共有の閲覧）、`delete_my_account()`（退会） | `supabase-schema.sql:91`、`:30` |
 | **`security definer`** | 関数を、呼んだ人ではなく、持ち主の権限で動かす指定。使う場合は `search_path` の固定が必須 | `supabase-schema.sql:30`、`:91` |
@@ -91,7 +92,7 @@ Supabase は、PostgreSQL を中心にした、オープンソースの BaaS で
 | **OAuth 2.0（Google）** | パスワードを預からず、Google に本人確認を任せる | `app.js:212`（`signInWithGoogle`） |
 | **ログイン後の処理** | 別アカウントの記録を混ぜない確認、クラウドとの統合 | `app.js:159`（`finishLogin`） |
 | **ログアウト** | 端末の記録と、所有者の印を消す | `app.js:176`（`applySignedOut`） |
-| **退会** | RPC を呼び、クラウドのアカウントごと削除 | `app.js:1475`（`deleteAccount`） |
+| **退会** | RPC を呼び、クラウドのアカウントごと削除 | `app.js:1523`（`deleteAccount`） |
 | **Google Search Console** | サイトの所有確認（同意画面の公開に必要） | `index.html` の `google-site-verification` |
 
 ---
@@ -100,10 +101,10 @@ Supabase は、PostgreSQL を中心にした、オープンソースの BaaS で
 
 | 考え方 | 内容 | 場所 |
 |---|---|---|
-| **ローカルファースト** | 先に IndexedDB へ保存し、あとからクラウドへ送る。通信が切れても使える | `app.js:1127`（`commit`） |
+| **ローカルファースト** | 先に IndexedDB へ保存し、あとからクラウドへ送る。通信が切れても使える | `app.js:1175`（`commit`） |
 | **Last-Write-Wins** | 記録ごとの `updatedAt` を比べ、新しい方を採用 | `app.js:69`（`mergeItems`） |
 | **トゥームストーン（削除の印）** | 行を消さず、`deleted: true` を付けて、他の端末にも削除を伝える | `app.js:237`（`emptyOf`） |
-| **ごみ箱** | 30日は中身を残し、過ぎたら中身だけ消す。90日で印も消す | `app.js:241`（`compactTrash`）、`:1511`（`renderTrash`） |
+| **ごみ箱** | 30日は中身を残し、過ぎたら中身だけ消す。90日で印も消す | `app.js:241`（`compactTrash`）、`:1559`（`renderTrash`） |
 | **同期待ちと再送** | 失敗した記録のIDを控え、接続の復帰・1分ごと・タブを開いたときに再送 | `app.js:110`（`flushPending`） |
 | **表紙と記録を分けて同期** | 表紙を先に Storage に置いてから、`{ hash }` だけの記録を送る（記録が、ないファイルを指さないように）。ほかの端末は、表示するときに手元にない表紙だけを取ってきて、中身がハッシュと合うのを確かめてから手元に置く | `app.js:442`（`cloudRow`）、`:409`（`getCoverBlob`） |
 | **クラウドの形の移行** | 以前の形（表紙を記録に埋め込んだもの）の記録は、ログイン時に表紙を Storage へ移し、新しい形（`format: 2`）で送り直す。更新日時は変えず、途中で止まっても次のログインで続きから。Storage をまだ用意していなければ、以前の形のまま送る | `app.js:128`（`loadCloudItems`） |
@@ -112,7 +113,7 @@ Supabase は、PostgreSQL を中心にした、オープンソースの BaaS で
 | **まとめて送る** | 20件ずつ送信 | `app.js:74`（`syncItems`） |
 | **ページ分けの取得** | 100件ずつ全件を読む（取得上限を超えないため） | `app.js:119`（`fetchRemoteItems`） |
 | **ログイン時の統合** | クラウドと手元を合わせ、差分だけ送る | `app.js:128`（`loadCloudItems`） |
-| **別のタブの変更の取り込み** | `storage` イベントで検知 | `app.js:1930` |
+| **別のタブの変更の取り込み** | `storage` イベントで検知 | `app.js:2005` |
 
 ---
 
@@ -122,11 +123,11 @@ Supabase は、PostgreSQL を中心にした、オープンソースの BaaS で
 |---|---|
 | ネタバレの部分（`||` で囲む）。分ける・省く・カードで印にする。以前の「記録全体がネタバレ」の印は、読み込み時に全体を `||` で囲む形に置き換える | `app.js:264`（`spoilerParts`）、`:291`（`withoutSpoilers`）、`:637`（`maskedSpoilers`） |
 | 記録の正規化（壊れたデータを整える。XSS 対策も兼ねる） | `app.js:307`（`normalizeItem`） |
-| JSON の書き出し・読み込み | `app.js:1192`（`backup`）、`:1427`（`importJson`） |
-| CSV の書き出し（数式の実行を防ぐ印つき） | `app.js:1346`（`csvCell`）、`:1352`（`exportCsv`） |
-| CSV の読み込み（引用符・改行・見出しの名前の違いに対応） | `app.js:1362`（`parseCsv`）、`:1404`（`csvItems`）、`:1445`（`importCsv`） |
-| ジャンル・タグの整理（名前の変更・まとめ・削除） | `app.js:1598`（`applyBulk`）、`:1605`（`renameOption`） |
-| 振り返り（集計と棒グラフ） | `app.js:1641`（`drawBars`）、`:1666`（`drawReview`） |
+| JSON の書き出し・読み込み | `app.js:1240`（`backup`）、`:1475`（`importJson`） |
+| CSV の書き出し（数式の実行を防ぐ印つき） | `app.js:1394`（`csvCell`）、`:1400`（`exportCsv`） |
+| CSV の読み込み（引用符・改行・見出しの名前の違いに対応） | `app.js:1410`（`parseCsv`）、`:1452`（`csvItems`）、`:1493`（`importCsv`） |
+| ジャンル・タグの整理（名前の変更・まとめ・削除） | `app.js:1646`（`applyBulk`）、`:1653`（`renameOption`） |
+| 振り返り（集計と棒グラフ） | `app.js:1689`（`drawBars`）、`:1714`（`drawReview`） |
 
 ---
 
@@ -134,11 +135,11 @@ Supabase は、PostgreSQL を中心にした、オープンソースの BaaS で
 
 | 要素 | 内容 | 場所 |
 |---|---|---|
-| 共有の中身を作る | ネタバレの扱い（含めない／ネタバレの部分を除く／すべて）に応じて、メモと引用を出し入れ。「除く」はネタバレの部分を「（ネタバレのため省略）」に置き換えてから送る（隠す文字はサーバーにも送らない）。ID・メールは含めない | `app.js:1769`（`sharePayload`） |
-| 共有の表紙 | 「表紙を含める」を選んだときだけ、表紙を長辺240px以下の JPEG に縮めて入れる。共有は全体で1MB未満なので、1枚の上限を「800KB ÷ 件数」（最大24KB）にして、収まるまで小さく・粗くする。開くたびに選び直す（初期値は含めない） | `app.js:1775`（`addShareCovers`）、`:1765`（`shareCover`）、`:350`（`scaleImage`） |
-| リンクの文字列 | 128ビットの乱数を base64url に | `app.js:1764`（`makeShareToken`） |
-| 作成・一覧・停止 | `shares` への挿入、取得、削除 | `app.js:1840`（`createShare`）、`:1862`（`loadMyShares`） |
-| 手動で選ぶ | 選択のモード、選択の保持、並び順の維持 | `app.js:1731`（`pickedItems`）、`:1746`（`setPicking`） |
+| 共有の中身を作る | ネタバレの扱い（含めない／ネタバレの部分を除く／すべて）に応じて、メモと引用を出し入れ。「除く」はネタバレの部分を「（ネタバレのため省略）」に置き換えてから送る（隠す文字はサーバーにも送らない）。ID・メールは含めない | `app.js:1835`（`sharePayload`） |
+| 共有の表紙 | 「表紙を含める」を選んだときだけ、表紙を長辺240px以下の JPEG に縮めて入れる。共有は全体で1MB未満なので、1枚の上限を「800KB ÷ 件数」（最大24KB）にして、収まるまで小さく・粗くする。開くたびに選び直す（初期値は含めない） | `app.js:1823`（`addShareCovers`）、`:1813`（`shareCover`）、`:350`（`scaleImage`） |
+| リンクの文字列 | 128ビットの乱数を base64url に | `app.js:1830`（`makeShareToken`） |
+| 作成・一覧・停止 | `shares` への挿入、取得、削除 | `app.js:1908`（`createShare`）、`:1937`（`loadMyShares`） |
+| 手動で選ぶ | 選択のモード、選択の保持、並び順の維持 | `app.js:1779`（`pickedItems`）、`:1794`（`setPicking`） |
 | 閲覧ページ | `share.html#<リンクの文字列>` を読み、RPC で取得して表示。すべて `textContent` | `share.js:128`（`loadShare`）、`:98`（`renderShare`） |
 | 閲覧ページの見た目 | 題・件数・平均★・特によかった（★4.5以上）の数を上に出し、カードは表紙（なければ題の頭文字）と星の塗りで見せる。★4.5以上のカードは縁取りする。広い画面では2列 | `share.js:98`（`renderShare`）、`:44`（`renderStars`） |
 | 共有の表紙の受け付け | `data:image/jpeg;base64,…` の形だけを `<img>` に入れる（外部の URL や SVG は表示しない）。CSP の `img-src` に `data:` を足したのは `share.html` だけ | `share.js:56`（`renderCover`） |
@@ -153,18 +154,20 @@ Supabase は、PostgreSQL を中心にした、オープンソースの BaaS で
 
 | 要素 | 内容 | 場所 |
 |---|---|---|
-| **Wikidata** | 映画・ドラマ・ゲームを探す。名前で検索し（`wbsearchentities`）、種類（P31）で映画・ドラマ・ゲームを見分ける。アニメは AniList と重なるので除き、シーズン・エピソード・サウンドトラックなども除く。監督（P57、なければ脚本 P58）・開発元（P178）・ジャンル（P136）の日本語名を、もう1回の問い合わせでまとめて取る | `app.js:873`（`searchWikidata`）、`:854`（`parseWikidata`） |
-| **Apple Books（iTunes Search API）** | 本・漫画・ライトノベルを探す（約0.5秒と速く、表紙もある）。巻ごとの結果は1作品にまとめ（「葬送のフリーレン(15)」→「葬送のフリーレン」）、巻数のない本を優先、続きものは1巻の表紙を使う。種類はジャンル名（マンガ・ライトノベル・小説）で見分け、成人向けは除く。国立国会図書館サーチは、Apple Books にない本のために残す | `app.js:964`（`searchAppleBooks`）、`:949`（`parseAppleBooks`）、`:928`（`bookVolume`） |
-| **TMDB（REST）** | キー（`tmdb-config.js`）があるときだけ、映画・ドラマを探す（`search/multi`、`language=ja-JP`）。ポスターつき。日本のアニメ（アニメーション＋日本語）は AniList と重なるので除く。監督・制作者は、候補を選んだときに1回だけ問い合わせる。このとき Wikidata はゲームだけを探す。規約に従い、ページ下部に TMDB のロゴとクレジットを出す | `app.js:907`（`searchTmdb`）、`:893`（`parseTmdb`）、`:917`（`fetchTmdbPeople`） |
-| **AniList（GraphQL）** | 漫画・アニメ・ライトノベルを探す。1回の問い合わせで、題名・種類・ジャンル・作者（アニメは制作会社）・表紙の URL を、必要な項目だけまとめて取れる | `app.js:843`（`searchAniList`）、`:812`（`parseAniList`） |
-| **国立国会図書館サーチ（OpenSearch）** | 本を探す。結果は XML（RSS）なので、`DOMParser` で読む | `app.js:974`（`searchNdl`）、`:825`（`parseNdl`） |
+| **Wikidata** | 映画・ドラマ・ゲームを探す。名前で検索し（`wbsearchentities`）、種類（P31）で映画・ドラマ・ゲームを見分ける。アニメは AniList と重なるので除き、シーズン・エピソード・サウンドトラックなども除く。ゲームは、名前の検索がほかの意味（神話の「ハデス」など）で埋まることがあるので、本文の検索（`haswbstatement:P31=Q7889`）でも探す。日本語の名前がないゲーム（「ELDEN RING」など）は、検索で一致した日本語の別名か、英語の名前で出す。監督（P57、なければ脚本 P58）・開発元（P178）・ジャンル（P136）の日本語名を、もう1回の問い合わせでまとめて取る。ゲームのジャンルは「性的少数者が登場するコンピュータゲーム」のような説明を除き、「コンピュータRPG」は「RPG」にする | `app.js:888`（`searchWikidata`）、`:866`（`parseWikidata`）、`:806`（`gameGenre`） |
+| **Steam の画像** | Wikidata にある Steam の番号（P1733）から、Steam のストアの縦長の画像（`library_600x900.jpg`）を表紙にする。古いゲームで縦長の画像がなければ、横長の画像（`header.jpg`）にする。キー不要で、画像は CORS で読める | `app.js:802`（`steamCovers`） |
+| **App Store（iTunes Search API）** | スマホのゲームを探す（`media=software`）。ゲームの分類（6014）で、題名が探した言葉で始まるものだけを残す（攻略・ファンのアプリ、パチスロなどを除く）。「原神-6周年」のような名前は区切りの前だけにする。アイコン（600px）を表紙にする | `app.js:928`（`searchAppStore`）、`:916`（`parseAppStore`） |
+| **Apple Books（iTunes Search API）** | 本・漫画・ライトノベルを探す（約0.5秒と速く、表紙もある）。巻ごとの結果は1作品にまとめ（「葬送のフリーレン(15)」→「葬送のフリーレン」）、巻数のない本を優先、続きものは1巻の表紙を使う。種類はジャンル名（マンガ・ライトノベル・小説）で見分け、成人向けは除く。国立国会図書館サーチは、Apple Books にない本のために残す | `app.js:1004`（`searchAppleBooks`）、`:989`（`parseAppleBooks`）、`:968`（`bookVolume`） |
+| **TMDB（REST）** | キー（`tmdb-config.js`）があるときだけ、映画・ドラマを探す（`search/multi`、`language=ja-JP`）。ポスターつき。日本のアニメ（アニメーション＋日本語）は AniList と重なるので除く。監督・制作者は、候補を選んだときに1回だけ問い合わせる。このとき Wikidata はゲームだけを探す。規約に従い、ページ下部に TMDB のロゴとクレジットを出す | `app.js:947`（`searchTmdb`）、`:933`（`parseTmdb`）、`:957`（`fetchTmdbPeople`） |
+| **AniList（GraphQL）** | 漫画・アニメ・ライトノベルを探す。1回の問い合わせで、題名・種類・ジャンル・作者（アニメは制作会社）・表紙の URL を、必要な項目だけまとめて取れる | `app.js:854`（`searchAniList`）、`:823`（`parseAniList`） |
+| **国立国会図書館サーチ（OpenSearch）** | 本を探す。結果は XML（RSS）なので、`DOMParser` で読む | `app.js:1014`（`searchNdl`）、`:836`（`parseNdl`） |
 | 本の結果の絞り込み | 曖昧一致が多い（「火車」で「稲荷書店」が出る）ので、入力した文字を題名に含むものだけを残す。同じ題名・作者の版をまとめ、完全一致を先に、版の多い本（よく知られた本）を上に並べる | `parseNdl` |
 | 文字の比べ方 | `normalize('NFKC')` で全角・半角をそろえ、空白や記号を除いてから比べる | `app.js` の `workKey` |
-| 作者名の整え方 | 「宮部, みゆき, 1960-」「宮部／みゆき」→「宮部みゆき」 | `app.js:807`（`personName`） |
-| 届いた順に表示 | 国立国会図書館サーチは初回 8〜20 秒かかる（AniList は約 0.5 秒）。それぞれの結果が届いたら、すぐ候補に足す。古い検索の結果は、番号（`workSearchId`）で捨てる | `app.js:1008`（`runWorkSearch`） |
-| ジャンルの決め方 | 種類（アニメ・漫画・ライトノベル・小説・本）ごとに名前の候補を持ち、すでに使っている名前を優先（「マンガ」を使っていれば「マンガ」） | `app.js:803`（`pickGenre`） |
-| 入力のしかた | 題名とジャンルは置き換え、タグは今のタグに足す。自分で選んだ表紙は上書きしない | `app.js:1050`（`applyWork`） |
-| 表紙の取り込み | 画像を `fetch` で取得し、Canvas で長辺600pxに縮小して data URL で保存（手で選んだ画像と同じ形）。国立国会図書館サーチの本の表紙は、候補を選んだときに Apple Books で探す。違う本の表紙を付けないよう、題名（巻数などの続きは可）と作者（複数の作者なら、そのうちの1人）が合うものだけを使い、題名がぴったり同じもの、続きものは1巻を選ぶ。見つからなければ、そう伝える。映画・ドラマ・ゲームの表紙は取らない（ポスターや箱絵は Wikidata にほぼない） | `app.js:1043`（`fetchCover`）、`:969`（`findBookCover`）、`:937`（`pickBookCover`） |
+| 作者名の整え方 | 「宮部, みゆき, 1960-」「宮部／みゆき」→「宮部みゆき」 | `app.js:818`（`personName`） |
+| 届いた順に表示 | 国立国会図書館サーチは初回 8〜20 秒かかる（AniList は約 0.5 秒）。それぞれの結果が届いたら、すぐ候補に足す。古い検索の結果は、番号（`workSearchId`）で捨てる | `app.js:1048`（`runWorkSearch`） |
+| ジャンルの決め方 | 種類（アニメ・漫画・ライトノベル・小説・本）ごとに名前の候補を持ち、すでに使っている名前を優先（「マンガ」を使っていれば「マンガ」） | `app.js:814`（`pickGenre`） |
+| 入力のしかた | 題名とジャンルは置き換え、タグは今のタグに足す。自分で選んだ表紙は上書きしない | `app.js:1090`（`applyWork`） |
+| 表紙の取り込み | 画像を `fetch` で取得し、Canvas で長辺600pxに縮小して data URL で保存（手で選んだ画像と同じ形）。国立国会図書館サーチの本の表紙は、候補を選んだときに Apple Books で探す。違う本の表紙を付けないよう、題名（巻数などの続きは可）と作者（複数の作者なら、そのうちの1人）が合うものだけを使い、題名がぴったり同じもの、続きものは1巻を選ぶ。見つからなければ、そう伝える。ゲームは Steam の画像か App Store のアイコンを使い、1枚目が取れなければ次の候補を試す。映画・ドラマの表紙は、TMDB を設定したときだけ | `app.js:1083`（`fetchCover`）、`:1009`（`findBookCover`）、`:977`（`pickBookCover`） |
 | 個人情報 | 送るのは入力した題名だけ（本の表紙を探すときは、題名と作者名）。プライバシーポリシーにも記載 | `privacy.html` の「外部のサービスに送る情報」 |
 
 ---
@@ -178,10 +181,10 @@ Supabase は、PostgreSQL を中心にした、オープンソースの BaaS で
 | 外部スクリプトの改ざん | バージョン固定と **SRI**（`integrity` 属性） | `index.html:499` |
 | HTML 文字列の差し込み | CSP の **Trusted Types**（`require-trusted-types-for 'script'`）で、`innerHTML` などへの文字列の代入を、ブラウザが拒否する。許可するのは `yokattana` という1つの処理だけで、通すのは国立国会図書館サーチの XML と `sw.js` のみ。Chrome・Edge で有効（他のブラウザでは無視されるが、`innerHTML` を使わないことで同じく守る） | `app.js:8`（`trusted`）、各ページの CSP |
 | 他のサイトへの埋め込み（クリックジャッキング） | iframe の中で開かれたら、中身を隠して「新しい画面で開く」リンクだけを出す。GitHub Pages ではヘッダーを付けられず、`<meta>` の CSP では `frame-ancestors` が効かないため、スクリプトで行う | `theme.js` |
-| 想定外の通信・実行 | **CSP**（読み込み・通信先の許可リスト）。通信先は Supabase、AniList、国立国会図書館サーチ、Wikidata、Apple（検索と画像）、TMDB（検索と画像）、画像の表示は AniList・TMDB・Apple の画像サーバーだけ | `index.html:15` |
-| 外部の作品データの注入 | 検索結果は `textContent` で表示し、表紙は取得後に Canvas で描き直して data URL に。外部の画像URLは保存しない | `app.js:986`（`workOption`）、`:1043`（`fetchCover`） |
+| 想定外の通信・実行 | **CSP**（読み込み・通信先の許可リスト）。通信先は Supabase、AniList、国立国会図書館サーチ、Wikidata、Apple（検索と画像）、TMDB（検索と画像）、Steam（画像）、画像の表示は AniList・TMDB・Apple・Steam の画像サーバーだけ | `index.html:15` |
+| 外部の作品データの注入 | 検索結果は `textContent` で表示し、表紙は取得後に Canvas で描き直して data URL に。外部の画像URLは保存しない | `app.js:1026`（`workOption`）、`:1083`（`fetchCover`） |
 | 共有リンクの推測 | 128ビットの乱数。一覧は取れず、IDを知る人が1件だけ読める | `get_share`（`supabase-schema.sql:91`） |
-| CSV の数式実行 | `=` `+` `-` `@` で始まるセルに印 | `app.js:1346`（`csvCell`） |
+| CSV の数式実行 | `=` `+` `-` `@` で始まるセルに印 | `app.js:1394`（`csvCell`） |
 | 乱用 | 共有は1人50件（期限切れは数えない）、100件まで、1MB未満、題名は100文字まで | `supabase-schema.sql:49`〜、`:154`〜 |
 | 期限切れの共有の残り | 作成のたびに自分の分を、週1回の keepalive で全員の分を消す（`purge_expired_shares`。消すのは見られなくなったものだけなので、公開キーで呼べる） | `supabase-schema.sql:183`、`.github/workflows/keepalive.yml` |
 | 別アカウントへの混入 | 端末の所有者を記録し、違えば破棄 | `app.js:159`（`finishLogin`） |
@@ -194,7 +197,7 @@ Supabase は、PostgreSQL を中心にした、オープンソースの BaaS で
 
 | 項目 | 内容 | 場所 |
 |---|---|---|
-| ダークモード | 自動・ライト・ダークの切り替え。選択は localStorage に保存。描画前に反映してちらつきを防ぐ | `theme.js`、`app.js:1210`（`applyTheme`） |
+| ダークモード | 自動・ライト・ダークの切り替え。選択は localStorage に保存。描画前に反映してちらつきを防ぐ | `theme.js`、`app.js:1258`（`applyTheme`） |
 | アクセシビリティ | `aria-label`、`aria-labelledby`、本文へ移動するリンク、色の対比（4.5:1）、大きなタップ領域 | `index.html:22`、`styles.css:695` |
 | お知らせ（トースト） | 開いているダイアログの中に出す（背後に隠れないため） | `app.js:42`（`showToast`） |
 | 状態表示 | オフライン、同期待ち、同期中 | `app.js:51`（`updateSyncStatus`） |
