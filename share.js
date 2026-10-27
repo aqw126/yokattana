@@ -37,8 +37,8 @@ function renderMessage(root, text) {
   root.append(node('p', 'share-message', text));
 }
 
-// 共有に含めた表紙は、小さな JPEG の data URL だけを受け付ける
-const SHARE_COVER_PATTERN = /^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/;
+// 共有に含めた表紙は、小さな WebP か JPEG の data URL だけを受け付ける
+const SHARE_COVER_PATTERN = /^data:image\/(webp|jpeg);base64,[A-Za-z0-9+/]+={0,2}$/;
 
 // ★の数を、5つの星の塗りで見せる（3.0〜5.0）
 function renderStars(rating) {

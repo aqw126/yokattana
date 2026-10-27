@@ -346,8 +346,16 @@ function saveLegacy() {
 function liveItems() {
   return state.items.filter(x=>!x.deleted)
 }
-// 長辺600pxのJPEGに縮小する。細かい画像で COVER_LIMIT を超えるときは、さらに小さく・粗くする（クラウドは1件300KBまで）
-function scaleImage(src,steps=[[600,0.8],[600,0.6],[450,0.6],[300,0.5]],limit=COVER_LIMIT) {
+// 画像は WebP で保存する（同じ見た目で JPEG の半分ほど）。WebP で書き出せないブラウザ（返ってくるのが PNG）は JPEG にする
+const WEBP_OK=(()=> {
+  try { return document.createElement('canvas').toDataURL('image/webp').startsWith('data:image/webp'); }
+  catch { return false; }
+})();
+function encodeCanvas(canvas,quality,webp=WEBP_OK) {
+  return canvas.toDataURL(webp?'image/webp':'image/jpeg',quality)
+}
+// 長辺450pxに縮小する（一覧のカードは横250〜330px なので、これで足りる）。細かい画像で COVER_LIMIT を超えるときは、さらに小さく・粗くする（クラウドは1件300KBまで）
+function scaleImage(src,steps=[[450,0.75],[450,0.6],[360,0.6],[300,0.5]],limit=COVER_LIMIT) {
   return new Promise((resolve,reject)=> {
     const img=new Image();
     img.onload=()=> {
@@ -359,7 +367,7 @@ function scaleImage(src,steps=[[600,0.8],[600,0.6],[450,0.6],[300,0.5]],limit=CO
         g.fillStyle='#fff';
         g.fillRect(0,0,c.width,c.height);
         g.drawImage(img,0,0,c.width,c.height);
-        url=c.toDataURL('image/jpeg',quality);
+        url=encodeCanvas(c,quality);
         if(url.length<=limit) break
       }
       resolve(url)
@@ -1826,8 +1834,8 @@ document.addEventListener('keydown',event=> { if(event.key==='Escape'&&picking&&
 
 // 共有リンク（その時点の内容を、読み取り専用のコピーとして公開する）
 const SHARE_LIMIT=100,SHARE_TOKEN=/^[A-Za-z0-9_-]{22,64}$/;
-// 共有に含める表紙は、小さな JPEG にする。共有は全体で1MBまでなので、表紙は合わせて800KBほどに収める
-const SHARE_COVER_BUDGET=800000,SHARE_COVER_MAX=24000,SHARE_COVER_STEPS=[[240,0.75],[200,0.7],[160,0.6],[120,0.5]];
+// 共有に含める表紙は、小さな WebP（使えなければ JPEG）にする。共有は全体で1MBまでなので、表紙は合わせて800KBほどに収める
+const SHARE_COVER_BUDGET=800000,SHARE_COVER_MAX=24000,SHARE_COVER_STEPS=[[240,0.72],[200,0.65],[160,0.6],[120,0.5]];
 async function shareCover(cover,limit) {
   if(!cover) return null;
   try {
