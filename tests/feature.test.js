@@ -161,7 +161,13 @@ test('共有: 作成できなかったときは、理由が分かる', async () 
   openShare(visible(), 't', 'c');
   fakeCloud.insertError = { message: 'too many shares' };
   await createShare();
-  assert(alerts.at(-1).includes('50件'), 'limit message');
+  assert(alerts.at(-1).includes('20件'), 'limit message');
+  fakeCloud.insertError = { message: 'share_limit: too much data' };
+  await createShare();
+  assert(alerts.at(-1).includes('5MB') && alerts.at(-1).includes('表紙を含めず'), 'size message');
+  fakeCloud.insertError = { message: 'storage_full: the database is almost full' };
+  await createShare();
+  assert(alerts.at(-1).includes('クラウド全体'), 'full message');
   fakeCloud.insertError = { message: 'relation "public.shares" does not exist' };
   await createShare();
   assert(alerts.at(-1).includes('supabase-schema.sql'), 'setup message');

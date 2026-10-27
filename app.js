@@ -89,9 +89,14 @@ async function syncItems(items) {
       chunk.forEach(item=>pending.add(item.id));
       ok=false;
       // クラウドの上限（supabase-schema.sql の guard_library_item）に達したら、一度だけ知らせる
-      if(!limitWarned&&(String(error?.message).includes('library_limit')||error?.code==='23514')) {
+      const message=String(error?.message);
+      if(!limitWarned&&message.includes('storage_full')) {
         limitWarned=true;
-        showToast('クラウドの保存上限（1人5000件・合計100MB、1件300KB）に達したため、同期できませんでした。この端末には保存されています。不要な記録や表紙画像を減らしてください。')
+        showToast('クラウド全体の保存容量がいっぱいのため、同期できませんでした。この端末には保存されています。')
+      }
+      else if(!limitWarned&&(message.includes('library_limit')||error?.code==='23514')) {
+        limitWarned=true;
+        showToast('クラウドの保存上限（1人5000件・合計10MB）に達したため、同期できませんでした。この端末には保存されています。不要な記録を減らしてください。')
       }
     }
   }
@@ -159,6 +164,7 @@ function setAuthMessage(message='') {
 async function finishLogin(user) {
   currentUser=user;
   coverBucketMissing=false;
+  coverQuotaFull=false;
   uploadedCovers.clear();
   if($('#auth-dialog').open) $('#auth-dialog').close();
   $('#auth-button').textContent='ログアウト';
@@ -404,6 +410,11 @@ async function storeCover(dataUrl) {
 const COVER_BUCKET='covers',uploadedCovers=new Set(),downloadingCovers=new Map();
 // supabase-schema.sql の Storage の部分をまだ実行していないときは、以前と同じく表紙を記録に埋め込んで送る
 let coverBucketMissing=false;
+// 表紙の上限（1人30MB、全体900MB）に達したら、そのログインの間は置くのをやめ、記録だけを送る（表紙はこの端末にだけ残る）
+let coverQuotaFull=false;
+function isCoverQuota(error) {
+  return /row-level security|violates/i.test(String(error?.message))||String(error?.statusCode)==='403'
+}
 function coverPath(hash) {
   return `${currentUser.id}/${hash}`
 }
@@ -435,13 +446,18 @@ async function getCoverBlob(hash) {
 }
 // 表紙をクラウドに置く。置けた（またはもうある）なら true、Storage がまだ用意されていなければ false
 async function uploadCover(hash) {
-  if(uploadedCovers.has(hash)) return true;
+  if(uploadedCovers.has(hash)||coverQuotaFull) return true;
   if(coverBucketMissing) return false;
   const blob=await LocalStore.getCover(hash).catch(()=>null);
   // 手元にないのは、クラウドから来て、まだ取ってきていない表紙（クラウドにはある）
   if(!blob) return true;
   const { error }=await cloud.storage.from(COVER_BUCKET).upload(coverPath(hash),blob, { contentType:blob.type||'image/jpeg',upsert:false });
   if(error&&isBucketMissing(error)) { coverBucketMissing=true; return false; }
+  if(error&&!isAlreadyStored(error)&&isCoverQuota(error)) {
+    coverQuotaFull=true;
+    showToast('クラウドに置ける表紙の上限（1人30MB）に達しました。新しい表紙は、この端末にだけ保存されます。使っていない表紙を外すと空きます。');
+    return true
+  }
   if(error&&!isAlreadyStored(error)) throw error;
   uploadedCovers.add(hash);
   return true
@@ -1950,7 +1966,7 @@ async function createShare() {
     const message=String(error?.message||'');
     button.disabled=false;
     button.textContent='共有リンクを作る';
-    alert(/too many/i.test(message)?'作成済みのリンクが多すぎます（50件まで）。不要なリンクを停止してください。':/shares|relation|schema cache|does not exist/i.test(message)?'共有機能がまだ有効になっていません。supabase-schema.sql の shares の部分を、Supabase で実行してください。':'共有リンクを作れませんでした。通信状況を確認して、もう一度お試しください。');
+    alert(/too many/i.test(message)?'作成済みのリンクが多すぎます（期限内のものは20件まで）。不要なリンクを停止してください。':/share_limit/.test(message)?'共有の合計サイズの上限（5MB）に達しました。不要なリンクを停止するか、表紙を含めずに作ってください。':/storage_full/.test(message)?'クラウド全体の保存容量がいっぱいのため、共有リンクを作れませんでした。':/shares|relation|schema cache|does not exist/i.test(message)?'共有機能がまだ有効になっていません。supabase-schema.sql の shares の部分を、Supabase で実行してください。':'共有リンクを作れませんでした。通信状況を確認して、もう一度お試しください。');
     return
   }
   button.disabled=false;
