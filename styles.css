@@ -198,6 +198,9 @@ aside span {
   gap:18px
 }
 .grid article {
+  /* 同じ行のカードは高さがそろうので、日付と編集の欄を下に寄せる */
+  display:flex;
+  flex-direction:column;
   background:var(--paper);
   border:1px solid var(--line);
   border-radius:12px;
@@ -210,6 +213,10 @@ aside span {
   box-shadow:0 12px 30px #22342c14
 }
 .open {
+  flex:1 0 auto;
+  display:flex;
+  flex-direction:column;
+  justify-content:flex-start;
   width:100%;
   border:0;
   background:transparent;
@@ -279,6 +286,7 @@ h3 {
   border-top:1px solid var(--line);
   padding:10px 16px;
   margin-top:11px;
+  gap:8px;
   display:flex;
   justify-content:space-between;
   align-items:center;
@@ -784,7 +792,9 @@ dialog footer {
 
 .check { display:flex !important; align-items:center; gap:8px; font-weight:400; font-size:13px; }
 .check input { width:auto !important; padding:0 !important; border:0 !important; }
-.cardbody blockquote { margin:8px 0 0; padding:2px 0 2px 10px; border-left:3px solid var(--sage); color:var(--muted); font-size:12px; line-height:1.7; overflow-wrap:anywhere; }
+.cardbody blockquote { margin:8px 0 0; padding:2px 0 2px 10px; border-left:3px solid var(--sage); color:var(--muted); font-size:12px; line-height:1.7; overflow-wrap:anywhere; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+/* 日付は折り返さない（「に追加」だけが次の行に落ちないように） */
+.grid footer small { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
 .cardbody blockquote[hidden], .spoiler-badge[hidden] { display:none; }
 .spoiler-badge { font-style:normal; font-size:10px; padding:1px 6px; border-radius:10px; background:var(--pale); color:var(--warm); }
 .spoiler-mask { display:inline-block; margin:0 2px; padding:0 8px; border-radius:4px; background:var(--ink); color:var(--canvas); font-size:11px; line-height:1.6; vertical-align:baseline; }
