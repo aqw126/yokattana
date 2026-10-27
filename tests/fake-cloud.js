@@ -15,10 +15,12 @@ window.fakeCloud = (() => {
       cloud.calls = [];
       cloud.files.clear();
       cloud.bucketMissing = false;
+      cloud.coverQuota = false;
     },
     // Storage（表紙の置き場所）の偽物。path -> { blob, created_at }
     files: new Map(),
     bucketMissing: false,
+    coverQuota: false,
     storage: {
       from() {
         const missing = () => ({ data: null, error: { message: 'Bucket not found', statusCode: '404', status: 400 } });
@@ -26,6 +28,7 @@ window.fakeCloud = (() => {
           upload: async (path, blob) => {
             cloud.calls.push(['upload', path]);
             if (cloud.bucketMissing) return missing();
+            if (cloud.coverQuota) return { data: null, error: { message: 'new row violates row-level security policy', statusCode: '403', status: 400 } };
             if (cloud.files.has(path)) return { data: null, error: { message: 'The resource already exists', statusCode: '409', status: 400 } };
             cloud.files.set(path, { blob, created_at: new Date().toISOString() });
             return { data: { path }, error: null };

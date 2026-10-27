@@ -162,6 +162,7 @@ async function signedIn() {
   await freshStore();
   currentUser = { id: '11111111-1111-1111-1111-111111111111' };
   coverBucketMissing = false;
+  coverQuotaFull = false;
   uploadedCovers.clear();
   coverUrls.clear();
 }
@@ -261,4 +262,24 @@ test('Storage: アカウントを削除するときは、先にクラウドの�
   const calls = fakeCloud.calls.map(c => c[0] === 'rpc' ? c[1] : c[0]);
   assert(calls.indexOf('remove') < calls.indexOf('delete_my_account'), 'covers removed before the account');
   eq(currentUser, null);
+});
+
+test('Storage: 表紙の上限に達したら、一度だけ知らせ、記録は表紙なしでも同期する（置き直しは試さない）', async () => {
+  await signedIn();
+  fakeCloud.coverQuota = true;
+  const shown = [];
+  const original = window.showToast;
+  showToast = message => shown.push(message);
+  try {
+    const a = make({ title: 'A', cover: await storeCover(PNG) });
+    const b = make({ title: 'B', cover: await storeCover(noisyCover(40, 60)) });
+    setItems([a, b]);
+    eq(await syncItems([a]), true);
+    eq(await syncItems([b]), true);
+    eq([fakeCloud.rows.get(a.id).payload.cover, fakeCloud.rows.get(b.id).payload.cover], [a.cover, b.cover]);
+  } finally { showToast = original; }
+  eq(fakeCloud.calls.filter(c => c[0] === 'upload').length, 1);
+  eq(shown.length, 1);
+  assert(shown[0].includes('30MB'), 'mentions the limit');
+  currentUser = null;
 });

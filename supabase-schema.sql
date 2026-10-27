@@ -274,3 +274,105 @@ begin
   return new;
 end;
 $$;
+
+-- 無料枠に合わせた上限。Supabase の SQL Editor で、この下の部分を一度だけ実行する（何度実行しても大丈夫）。
+-- 無料枠は、データベース 500MB・表紙の置き場所（Storage）1GB。1人が使える量を、全体の数％に抑える。
+-- 上の「記録の上限」「共有リンクの整理」「表紙の置き場所」で決めた上限を、ここで置き換える。
+-- ・記録：1件 60KB まで（表紙は Storage にあるので、文字だけ）、1人 5000件・合計 10MB まで
+-- ・共有：期限内のリンクは1人20件まで、合計 5MB まで（表紙つきの共有は1件で最大1MB）
+-- ・表紙：1枚 150KB まで（端末で長辺450px の WebP に縮めている）、1人 30MB まで
+-- ・全体：データベースが 450MB、表紙が合わせて 900MB を超えたら、新しく増やせないようにする（枠を超えて止まらないように）
+-- 減らす変更（以前の形の記録を新しい形にする、など）は、上限を超えていても通す
+alter table public.library_items drop constraint if exists library_items_payload_size;
+alter table public.library_items add constraint library_items_payload_size check (pg_column_size(payload) < 60000) not valid;
+
+create or replace function public.guard_library_item()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+declare
+  stamp timestamptz;
+  grows boolean := tg_op = 'INSERT' or pg_column_size(new.payload) > pg_column_size(old.payload);
+begin
+  if tg_op = 'UPDATE' and old.payload->>'format' = '2' and coalesce(new.payload->>'format', '') <> '2' then
+    raise exception 'old_client: reload the app to sync this record';
+  end if;
+
+  begin
+    stamp := (new.payload->>'updatedAt')::timestamptz;
+  exception when others then
+    stamp := null;
+  end;
+  if stamp is null or stamp > now() + interval '5 minutes' then
+    stamp := now();
+    new.payload := jsonb_set(new.payload, '{updatedAt}', to_jsonb(to_char(stamp at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')));
+  end if;
+  new.updated_at := stamp;
+
+  if not grows then
+    return new;
+  end if;
+  if pg_database_size(current_database()) > 450000000 then
+    raise exception 'storage_full: the database is almost full';
+  end if;
+  if tg_op = 'INSERT' and (select count(*) from public.library_items where user_id = new.user_id) >= 5000 then
+    raise exception 'library_limit: too many items';
+  end if;
+  if (select coalesce(sum(pg_column_size(payload)), 0) from public.library_items where user_id = new.user_id and id <> new.id)
+     + pg_column_size(new.payload) > 10000000 then
+    raise exception 'library_limit: too much data';
+  end if;
+  return new;
+end;
+$$;
+
+create or replace function public.limit_shares()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+begin
+  -- 期限切れのリンクは、数にも合計にも入れない
+  delete from public.shares where user_id = new.user_id and expires_at <= now();
+  if pg_database_size(current_database()) > 450000000 then
+    raise exception 'storage_full: the database is almost full';
+  end if;
+  if (select count(*) from public.shares where user_id = new.user_id) >= 20 then
+    raise exception 'too many shares';
+  end if;
+  if (select coalesce(sum(pg_column_size(payload)), 0) from public.shares where user_id = new.user_id)
+     + pg_column_size(new.payload) > 5000000 then
+    raise exception 'share_limit: too much data';
+  end if;
+  return new;
+end;
+$$;
+
+update storage.buckets set file_size_limit = 150000 where id = 'covers';
+
+-- 全員の表紙の合計サイズ。数を返すだけで、中身は見せない
+create or replace function public.all_cover_bytes()
+returns bigint
+language sql
+security definer
+set search_path = public, storage
+stable
+as $$
+  select coalesce(sum((metadata->>'size')::bigint), 0)
+  from storage.objects
+  where bucket_id = 'covers';
+$$;
+revoke all on function public.all_cover_bytes() from public, anon;
+grant execute on function public.all_cover_bytes() to authenticated;
+
+drop policy if exists "Users can upload their own covers" on storage.objects;
+create policy "Users can upload their own covers"
+on storage.objects for insert to authenticated
+with check (
+  bucket_id = 'covers'
+  and (storage.foldername(name))[1] = (select auth.uid())::text
+  and name ~ '^[0-9a-f-]{36}/[0-9a-f]{64}$'
+  and (select public.my_cover_bytes()) < 30000000
+  and (select public.all_cover_bytes()) < 900000000
+);

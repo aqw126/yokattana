@@ -474,3 +474,19 @@ test('同期: クラウドの上限に達したら、同期待ちに残し、一
   fakeCloud.upsertError = null;
   currentUser = null;
 });
+
+test('同期: クラウド全体がいっぱいのときは、そう知らせて同期待ちに残す', async () => {
+  resetApp();
+  limitWarned = false;
+  currentUser = { id: 'u1' };
+  const item = make({ title: '満杯' });
+  setItems([item]);
+  fakeCloud.upsertError = { message: 'storage_full: the database is almost full', code: 'P0001' };
+  const shown = [];
+  const original = window.showToast;
+  showToast = message => shown.push(message);
+  try { eq(await syncItems([item]), false); } finally { showToast = original; }
+  assert(pending.has(item.id) && shown.length === 1 && shown[0].includes('クラウド全体'), 'full message');
+  fakeCloud.upsertError = null;
+  currentUser = null;
+});
