@@ -29,7 +29,7 @@
 - `supabase-config.js` / `supabase-schema.sql`: Supabase の接続先とテーブル・RLS
 - `tmdb-config.js` / `tmdb-logo.svg`: TMDB の API キー（空なら使わない）と、クレジット用のロゴ
 - `manifest.webmanifest` / `icon.svg`: ホーム画面への追加用
-- `sw.js`: オフライン対応（ネットワーク優先で、つながらないときだけ保存済みの内容を使う）。`tools/bump-version.py` がバージョンを更新します
+- `sw.js`: オフライン対応と起動の高速化（保存済みの内容をすぐ返し、裏でネットワークから更新する）。`tools/bump-version.py` がバージョンを更新します
 - `theme.js`: 表示テーマ（自動・ライト・ダーク）を、描画前に反映します。他のサイトの中（iframe）では中身を隠します
 - `share.html` / `share.js`: 共有リンクの閲覧ページ（読み取り専用）
 - `guide.html`: 使い方（機能の説明）
