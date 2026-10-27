@@ -908,9 +908,27 @@ async function searchWikidata(query,kinds) {
     }
     catch {}
   }
+  await borrowSteamIds(entities);
   // 検索の並び（関連の強い順）を保つ
   const order=new Map(ids.map((id,i)=>[id,i]));
   return parseWikidata(Object.fromEntries(Object.entries(entities||{}).sort((a,b)=>order.get(a[0])-order.get(b[0]))),labels,kinds,aliases).slice(0,6)
+}
+// Steam で売っていない元のゲームは、Steam で売っている完全版（「ペルソナ5 ザ・ロイヤル」など）の番号を借りる。
+// 派生作品（P4969）のうち、元のゲームをもとにし（P144）、同じ開発元（P178）が作ったゲームだけ（別の会社の外伝は除く）
+async function borrowSteamIds(entities) {
+  const claim=(entity,prop)=>(entity?.claims?.[prop]||[]).map(x=>x.mainsnak?.datavalue?.value).filter(Boolean);
+  const ids=(entity,prop)=>claim(entity,prop).map(x=>x.id).filter(Boolean);
+  const games=Object.values(entities||{}).filter(x=>ids(x,'P31').some(t=>WIKIDATA_KINDS.game.includes(t))&&!claim(x,'P1733').length&&ids(x,'P4969').length);
+  const derived=[...new Set(games.flatMap(x=>ids(x,'P4969').slice(0,8)))].slice(0,50);
+  if(!derived.length) return;
+  let found;
+  try { found=(await wikidataApi( { action:'wbgetentities',ids:derived.join('|'),props:'claims' })).entities||{}; }
+  catch { return; }
+  games.forEach(game=> {
+    const makers=ids(game,'P178');
+    const edition=ids(game,'P4969').map(id=>found[id]).find(x=>x&&ids(x,'P31').some(t=>WIKIDATA_KINDS.game.includes(t))&&ids(x,'P144').includes(game.id)&&ids(x,'P178').some(m=>makers.includes(m))&&claim(x,'P1733').length);
+    if(edition) game.claims.P1733=edition.claims.P1733
+  })
 }
 // スマホのゲームは App Store で探す（アイコンを表紙にする）。ゲームの分類（6014）で、題名が探した言葉で始まるものだけ（攻略・ファンのアプリなどを除く）
 function parseAppStore(json,query) {

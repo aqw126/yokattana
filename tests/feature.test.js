@@ -920,3 +920,19 @@ test('ゲーム: CSP で Steam の画像の取得先を許可している', asyn
   const csp = (await indexHtml()).match(/Content-Security-Policy" content="([^"]+)"/)[1];
   assert(/img-src[^;]*https:\/\/shared\.akamai\.steamstatic\.com/.test(csp) && /connect-src[^;]*https:\/\/shared\.akamai\.steamstatic\.com/.test(csp), 'steam allowed');
 });
+
+test('ゲーム: Steam にない元のゲームは、同じ開発元の完全版の Steam の番号を借りる（別の会社の外伝は使わない）', async () => {
+  const steam = id => [{ mainsnak: { datavalue: { value: id } } }];
+  const entities = {
+    Q15225985: { id: 'Q15225985', labels: { ja: { value: 'ペルソナ5' } }, claims: { ...wdClaim('P31', 'Q7889'), ...wdClaim('P178', 'Q100'), ...wdClaim('P4969', 'Q74109258', 'Q63385672') } }
+  };
+  const derived = {
+    Q74109258: { id: 'Q74109258', claims: { ...wdClaim('P31', 'Q7889'), ...wdClaim('P178', 'Q200'), ...wdClaim('P144', 'Q15225985'), P1733: steam('1382330') } },
+    Q63385672: { id: 'Q63385672', claims: { ...wdClaim('P31', 'Q7889'), ...wdClaim('P178', 'Q100'), ...wdClaim('P144', 'Q15225985'), P1733: steam('1687950') } }
+  };
+  await withFetch(url => new Response(JSON.stringify({ entities: derived })), () => borrowSteamIds(entities));
+  eq(parseWikidata(entities)[0].cover, `${STEAM_IMAGE}1687950/library_600x900.jpg`);
+  const alone = { Q1: { id: 'Q1', labels: { ja: { value: 'X' } }, claims: { ...wdClaim('P31', 'Q7889'), ...wdClaim('P178', 'Q100'), ...wdClaim('P4969', 'Q74109258') } } };
+  await withFetch(url => new Response(JSON.stringify({ entities: derived })), () => borrowSteamIds(alone));
+  eq(parseWikidata(alone)[0].cover, '');
+});
