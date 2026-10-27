@@ -654,10 +654,19 @@ function date(v) {
     year:'numeric',month:'numeric',day:'numeric'
   }).format(new Date(v))
 }
+// 検索用の文字列は記録ごとに一度だけ作る（記録は更新のたびに新しいオブジェクトになるので、WeakMap で足りる）
+const searchTexts=new WeakMap();
+function searchText(x) {
+  let text=searchTexts.get(x);
+  if(text===undefined) {
+    text=[x.title,x.genre,...x.tags,x.notes||'',x.quote||''].join(' ').toLocaleLowerCase('ja');
+    searchTexts.set(x,text)
+  }
+  return text
+}
 function visible() {
   let q=$('#query').value.trim().toLocaleLowerCase('ja'),g=filters.genre,t=filters.tag,rt=filters.rating,s=$('#sort').value,r=liveItems().filter(x=> {
-    let text=[x.title,x.genre,...x.tags,x.notes||'',x.quote||''].join(' ').toLocaleLowerCase('ja');
-    return(!q||text.includes(q))&&(!g.size||g.has(x.genre))&&[...t].every(tag=>x.tags.includes(tag))&&(!rt.size||rt.has(ratingBand(x.rating)))
+    return(!q||searchText(x).includes(q))&&(!g.size||g.has(x.genre))&&[...t].every(tag=>x.tags.includes(tag))&&(!rt.size||rt.has(ratingBand(x.rating)))
   });
   return r.sort((a,b)=>compareItems(s,a,b))
 }
@@ -1409,7 +1418,15 @@ $('#delete').onclick=()=> {
     showToast(`ごみ箱に移動しました。${TRASH_DAYS}日間は、ごみ箱から戻せます。`)
   }
 };
-['#query','#sort'].forEach(s=>$(s).addEventListener(s==='#query'?'input':'change',render));
+// 検索は、入力が止まってから描き直す（変換中の文字では絞り込まない）
+let queryTimer=0;
+$('#query').addEventListener('input',e=> {
+  clearTimeout(queryTimer);
+  if(e.isComposing) return;
+  queryTimer=setTimeout(render,150)
+});
+$('#query').addEventListener('compositionend',()=> { clearTimeout(queryTimer); queryTimer=setTimeout(render,150); });
+$('#sort').addEventListener('change',render);
 document.querySelectorAll('.multi').forEach(root=> {
   const search=root.querySelector('.multi-search');
   // 評価のように選択肢が少ないものには、探す欄がない

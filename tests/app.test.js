@@ -533,3 +533,31 @@ test('起動: ログアウトの途中でページを離れていたら（印だ
   eq(state.items.length, 0);
   eq(localStorage.getItem(OWNER_KEY), null);
 });
+
+test('検索: 入力が止まってから絞り込み、変換中の文字では絞り込まない', async () => {
+  resetApp();
+  setItems([make({ title: '吾輩は猫である' }), make({ title: '坊っちゃん' })]);
+  const q = $('#query');
+  q.value = '猫';
+  q.dispatchEvent(new InputEvent('input', { bubbles: true }));
+  eq(titles().length, 2);
+  await new Promise(r => setTimeout(r, 250));
+  eq(titles(), ['吾輩は猫である']);
+  q.value = '坊';
+  q.dispatchEvent(new InputEvent('input', { bubbles: true, isComposing: true }));
+  await new Promise(r => setTimeout(r, 250));
+  eq(titles(), ['吾輩は猫である']);
+  q.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true }));
+  await new Promise(r => setTimeout(r, 250));
+  eq(titles(), ['坊っちゃん']);
+});
+
+test('検索: 記録を更新したら、検索用の文字列も作り直される', () => {
+  resetApp();
+  const a = make({ title: '旧題' });
+  setItems([a]);
+  $('#query').value = '新題';
+  eq(visible().length, 0);
+  state.items = [{ ...a, title: '新題' }];
+  eq(visible().length, 1);
+});
