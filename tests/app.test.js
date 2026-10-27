@@ -349,14 +349,15 @@ test('ログイン: 別アカウントのローカル記録は引き継がない
   assert(!fakeCloud.rows.size, 'must not upload another account data');
 });
 
-test('ログアウト: 端末の記録と所有者の印を消す', () => {
+test('ログアウト: 端末の記録と所有者の印を消す（印は、消し終えてから外す）', async () => {
   currentUser = { id: 'u1' };
   localStorage.setItem(OWNER_KEY, 'u1');
   setItems([make()]);
-  applySignedOut();
-  eq(state.items.length, 0);
+  const done = applySignedOut();
+  eq([state.items.length, currentUser], [0, null]);
+  eq(localStorage.getItem(OWNER_KEY), 'u1');
+  await done;
   eq(localStorage.getItem(OWNER_KEY), null);
-  eq(currentUser, null);
 });
 
 test('ログイン中のアカウントを表示する', () => {
@@ -489,4 +490,46 @@ test('同期: クラウド全体がいっぱいのときは、そう知らせて
   assert(pending.has(item.id) && shown.length === 1 && shown[0].includes('クラウド全体'), 'full message');
   fakeCloud.upsertError = null;
   currentUser = null;
+});
+
+test('ログイン: ログインせずに付けた記録は、追加してよいか確かめる（いいえなら書き出してから消す）', async () => {
+  resetApp();
+  localStorage.removeItem(OWNER_KEY);
+  const mine = make({ title: 'ログイン前の記録' });
+  setItems([mine]);
+  const asked = [];
+  window.confirm = message => { asked.push(message); return true; };
+  try {
+    await finishLogin({ id: 'u3' });
+    assert(asked[0].includes('1件'), 'asked with the count');
+    assert(fakeCloud.rows.has(mine.id), 'added to the account');
+    fakeCloud.reset();
+    applySignedOut();
+    await whenSaved();
+    localStorage.removeItem(OWNER_KEY);
+    const other = make({ title: '残したくない記録' });
+    setItems([other]);
+    window.confirm = () => false;
+    const original = window.backup;
+    let backedUp = '';
+    backup = async prefix => { backedUp = prefix; };
+    try { await finishLogin({ id: 'u4' }); } finally { backup = original; }
+    eq(backedUp, 'yokattana-before-login');
+    assert(!fakeCloud.rows.has(other.id) && !state.items.some(x => x.id === other.id), 'not added, cleared');
+    eq(localStorage.getItem(OWNER_KEY), 'u4');
+  } finally {
+    window.confirm = () => true;
+    currentUser = null;
+  }
+});
+
+test('起動: ログアウトの途中でページを離れていたら（印だけ残っている）、端末の記録を消し終える', async () => {
+  resetApp();
+  localStorage.setItem(OWNER_KEY, 'u1');
+  setItems([make({ title: '前のアカウントの記録' })]);
+  const original = cloud.auth.getSession;
+  cloud.auth.getSession = async () => ({ data: { session: null } });
+  try { await initializeCloud(); } finally { cloud.auth.getSession = original; }
+  eq(state.items.length, 0);
+  eq(localStorage.getItem(OWNER_KEY), null);
 });

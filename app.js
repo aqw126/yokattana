@@ -169,8 +169,18 @@ async function finishLogin(user) {
   if($('#auth-dialog').open) $('#auth-dialog').close();
   $('#auth-button').textContent='ログアウト';
   // 別アカウントのローカルデータを、ログインしたアカウントへ混ぜない
-  if(localStorage.getItem(OWNER_KEY)!==user.id) {
-    if(localStorage.getItem(OWNER_KEY)) { clearLocalRecords(); pending.clear(); savePending(); }
+  const owner=localStorage.getItem(OWNER_KEY);
+  if(owner!==user.id) {
+    if(owner) clearLocalRecords();
+    // 持ち主のない記録（ログインせずに付けた記録）は、このアカウントに入れてよいか確かめる。
+    // 入れないときは、書き出してから消す
+    else if(liveItems().length&&!confirm(`この端末に、ログインせずに付けた記録が${liveItems().length}件あります。このアカウントに追加しますか？
+
+「キャンセル」を選ぶと、記録をファイルに書き出してから、この端末から消します。`)) {
+      await backup('yokattana-before-login').catch(()=> {});
+      clearLocalRecords()
+    }
+    else if(!liveItems().length&&state.items.length) clearLocalRecords();
     localStorage.setItem(OWNER_KEY,user.id)
   }
   // ログイン直後は、クラウドとの差分をまとめて送るので、以前の同期待ちは破棄する
@@ -179,15 +189,19 @@ async function finishLogin(user) {
   updateSyncStatus();
   await loadCloudItems()
 }
-function applySignedOut() {
+async function applySignedOut() {
   currentUser=null;
   clearLocalRecords();
   pending.clear();
   savePending();
-  localStorage.removeItem(OWNER_KEY);
   $('#auth-button').textContent='ログイン';
   updateSyncStatus();
-  render()
+  render();
+  // 持ち主の印は、端末の記録を消し終えたのを確かめてから外す。消し終わる前にページを離れても
+  // （ログアウトしてすぐ別のアカウントでログインするなど）、印が残るので、次のログインで消える
+  await whenSaved();
+  const left=storeMode==='idb'?await LocalStore.loadItems().then(x=>x.length,()=>1):storeMode==='legacy'?loadLegacy().length:1;
+  if(!left&&!currentUser) localStorage.removeItem(OWNER_KEY)
 }
 async function initializeCloud() {
   updateSyncStatus();
@@ -197,7 +211,10 @@ async function initializeCloud() {
   try {
     const { data }=await cloud.auth.getSession();
     if(data.session?.user) await finishLogin(data.session.user);
-    else { pending.clear(); savePending(); }
+    // ログアウトの途中でページを離れた（印が残っている）ときは、ここで消し終える。
+    // 同期できていない記録があるときは、そのアカウントでもう一度ログインできるよう残す
+    else if(localStorage.getItem(OWNER_KEY)&&!pending.size) await applySignedOut();
+    else if(!localStorage.getItem(OWNER_KEY)) { pending.clear(); savePending(); }
   }
   catch { updateSyncStatus(true); }
 }
