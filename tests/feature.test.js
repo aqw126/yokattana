@@ -7,6 +7,14 @@ test('引用とネタバレ: 正規化され、削除すると消える', () => 
   eq([item.quote, item.spoiler], ['||名言||', true]);
   eq(normalizeItem({ title: 'a', spoiler: 'yes' }).spoiler, false);
   eq(normalizeItem({ title: 'a', notes: '前半||後半||', spoiler: true }).notes, '前半||後半||');
+  // 今の記録（片方の欄にだけ「||」がある）は、もう片方の欄が囲まれず、何度読み直しても変わらない
+  const once = normalizeItem({ title: 'a', notes: '普通の感想', quote: '星の||王子||さま', spoiler: true });
+  eq([once.notes, once.quote], ['普通の感想', '星の||王子||さま']);
+  const twice = normalizeItem(normalizeItem(once));
+  eq([twice.notes, twice.quote, twice.spoiler], ['普通の感想', '星の||王子||さま', true]);
+  // メモのネタバレを解除して保存した記録（引用には「||」が残る）も、読み直してメモが囲まれ直さない
+  const unmarked = normalizeItem({ ...once, notes: toggleSpoiler('前||結末||後', 1, 5).value });
+  eq(normalizeItem(unmarked).notes, '前結末後');
   eq(normalizeItem({ title: 'a', quote: 'x'.repeat(2000) }).quote.length, 1000);
   const emptied = emptyOf(item, new Date().toISOString());
   eq([emptied.quote, emptied.spoiler, hasContent(emptied)], ['', false, false]);
