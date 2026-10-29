@@ -995,3 +995,52 @@ test('オフライン: Service Worker は、自分のファイルの保存に失
   assert(!/cache\.add\(new Request\(url[^\n]*\.catch/.test(sw), 'own files must not swallow failures');
   assert(/searchParams\.has\('v'\)\) return cached/.test(sw), 'cache first for versioned files');
 });
+
+test('閲覧ページ: ジャンルとタグで絞り込める（両方を選んだら、両方に当てはまるものだけ）', () => {
+  const root = document.createElement('div');
+  document.body.append(root);
+  try {
+    renderShare(root, { payload: { title: 't', items: [
+      { title: 'A', genre: '本', rating: 4, tags: ['x', 'y'] },
+      { title: 'B', genre: '本', rating: 4, tags: ['y'] },
+      { title: 'C', genre: '漫画', rating: 4, tags: ['x'] }
+    ] } });
+    const names = () => [...root.querySelectorAll('article h2')].map(h => h.textContent);
+    const pick = (id, value) => { const s = root.querySelector('#' + id); s.value = value; s.dispatchEvent(new Event('change')); };
+    eq(names(), ['A', 'B', 'C']);
+    eq([...root.querySelectorAll('#share-genre option')].map(o => o.textContent), ['すべてのジャンル', '本（2）', '漫画（1）']);
+    pick('share-genre', '本');
+    eq(names(), ['A', 'B']);
+    pick('share-tag', 'x');
+    eq(names(), ['A']);
+    assert(root.querySelector('.share-count').textContent.includes('1件を表示（全3件）'), 'count');
+    pick('share-genre', '漫画'); pick('share-tag', 'y');
+    eq(names(), []);
+    assert(!root.querySelector('.share-message[hidden]') || root.querySelector('.share-message:not([hidden])'), 'empty message');
+    pick('share-genre', ''); pick('share-tag', '');
+    eq(names(), ['A', 'B', 'C']);
+  } finally { root.remove(); }
+});
+
+test('閲覧ページ: ジャンルもタグも1種類だけなら、絞り込みの欄は出さない', () => {
+  const root = document.createElement('div');
+  renderShare(root, { payload: { title: 't', items: [{ title: 'A', genre: '本', rating: 4, tags: [] }, { title: 'B', genre: '本', rating: 4, tags: [] }] } });
+  assert(!root.querySelector('.share-filters'), 'no filters');
+});
+
+test('閲覧ページ: 長いメモ・引用は切って「続きを読む」で開く。引用は本文と同じフォント', () => {
+  const root = document.createElement('div');
+  document.body.append(root);
+  try {
+    renderShare(root, { payload: { title: 't', items: [
+      { title: '長い', genre: '本', rating: 4, tags: [], notes: Array.from({ length: 30 }, (_, i) => '行' + i).join('\n'), quote: '引用' },
+      { title: '短い', genre: '本', rating: 4, tags: [], notes: '一言' }
+    ] } });
+    const [long, short] = root.querySelectorAll('article');
+    const more = long.querySelector('.share-more');
+    assert(!more.hidden && short.querySelector('.share-more').hidden, 'only overflowing cards get the button');
+    more.click();
+    assert(long.classList.contains('expanded') && more.getAttribute('aria-expanded') === 'true' && more.textContent === '閉じる', 'expanded');
+    eq(getComputedStyle(long.querySelector('blockquote')).fontFamily, getComputedStyle(long.querySelector('p')).fontFamily);
+  } finally { root.remove(); }
+});

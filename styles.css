@@ -822,8 +822,8 @@ dialog footer {
 .share-meta { color:var(--muted); font-size:13px; margin:0 0 6px; }
 .share-note { color:var(--warm); font-size:13px; margin:0 0 16px; }
 .share-message { color:var(--muted); padding:40px 0; text-align:center; }
-.share-list { display:grid; grid-template-columns:repeat(auto-fill,minmax(min(100%,420px),1fr)); gap:14px; margin-top:20px; align-items:start; }
-.share-item { display:grid; grid-template-columns:84px 1fr; gap:4px 16px; padding:16px; border:1px solid var(--line); border-radius:14px; background:var(--paper); box-shadow:0 5px 16px #22342c0c; }
+.share-list { display:grid; grid-template-columns:repeat(auto-fill,minmax(min(100%,420px),1fr)); gap:14px; margin-top:20px; align-items:stretch; }
+.share-item { display:grid; align-content:start; grid-template-columns:84px 1fr; gap:4px 16px; padding:16px; border:1px solid var(--line); border-radius:14px; background:var(--paper); box-shadow:0 5px 16px #22342c0c; }
 .share-item.top { border-color:var(--sage); box-shadow:0 0 0 1px var(--sage),0 8px 22px #22342c14; }
 .share-art { width:84px; aspect-ratio:2/3; border-radius:6px; overflow:hidden; display:grid; place-items:center; background:var(--art-grad); }
 .share-art img { width:100%; height:100%; object-fit:cover; display:block; }
@@ -840,7 +840,19 @@ dialog footer {
 .share-item .tags { margin-top:4px; }
 .share-body { grid-column:1 / -1; }
 .share-body p { margin:10px 0 0; white-space:pre-wrap; overflow-wrap:anywhere; line-height:1.8; }
-.share-body blockquote { margin:10px 0 0; padding:2px 0 2px 12px; border-left:3px solid var(--sage); color:var(--muted); white-space:pre-wrap; overflow-wrap:anywhere; font-family:Georgia,"Yu Mincho",serif; }
+.share-body blockquote { margin:10px 0 0; padding:2px 0 2px 12px; border-left:3px solid var(--sage); color:var(--muted); white-space:pre-wrap; overflow-wrap:anywhere; font-family:inherit; line-height:1.8; }
+/* メモは5行、引用は3行までで切って、並んだカードの高さをそろえる（「続きを読む」で開く） */
+.share-item:not(.expanded) .share-body > p { display:-webkit-box; -webkit-line-clamp:5; -webkit-box-orient:vertical; overflow:hidden; }
+.share-item:not(.expanded) .share-body > blockquote { display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+.share-more { grid-column:1 / -1; justify-self:start; margin-top:6px; padding:4px 10px; border:1px solid var(--line); border-radius:7px; background:transparent; color:var(--dark); font-size:12px; cursor:pointer; }
+.share-more[hidden] { display:none; }
+.share-filters { display:flex; flex-wrap:wrap; gap:10px; margin:16px 0 0; }
+.share-filter { display:grid; gap:3px; min-width:160px; flex:1 1 160px; max-width:260px; }
+.share-filter small { color:var(--muted); font-size:11px; }
+.share-filter select { padding:9px 10px; border:1px solid var(--line); border-radius:8px; background:var(--field); color:var(--ink); font-size:14px; font-family:inherit; }
+.share-count { margin:8px 0 0; color:var(--muted); font-size:12px; }
+.share-count:empty { display:none; }
+.share-message[hidden] { display:none; }
 .share-invite { text-align:center; margin:32px 0 0; font-size:13px; }
 @media (max-width:520px) {
   .share h1 { font-size:26px; }

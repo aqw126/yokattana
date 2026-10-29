@@ -3,7 +3,7 @@
 // 保存済みの内容がないときだけ、ネットワークを待つ。?v= 付きのファイルは、保存済みならネットワークには聞かない。
 // 公開した新しい版は、この sw.js が変わることで届く（新しい版を保存し直し、app.js がトーストで知らせる）。
 // VERSION は tools/bump-version.py が更新する。
-const VERSION = '202610292123';
+const VERSION = '202610292135';
 const CACHE = 'yokattana-' + VERSION;
 // 版を固定しているので、中身は変わらない。保存済みならネットワークに問い合わせない
 const SUPABASE_JS = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js';

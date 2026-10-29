@@ -91,8 +91,46 @@ function renderShareItem(item) {
       card.append(details);
     }
     else card.append(body);
+    // 長いメモ・引用は数行で切って、行の高さをそろえる。あふれたときだけ「続きを読む」を出す
+    const more = node('button', 'share-more', '続きを読む');
+    more.type = 'button';
+    more.hidden = true;
+    more.setAttribute('aria-expanded', 'false');
+    more.onclick = () => {
+      const open = card.classList.toggle('expanded');
+      more.textContent = open ? '閉じる' : '続きを読む';
+      more.setAttribute('aria-expanded', String(open));
+    };
+    card.append(more);
   }
   return card;
+}
+
+// 切られている（あふれている）カードにだけ、「続きを読む」を出す。開いているカードは、閉じるために出したままにする
+function updateClamps(root) {
+  root.querySelectorAll('.share-item').forEach(card => {
+    const more = card.querySelector('.share-more');
+    if (!more || card.classList.contains('expanded')) return;
+    more.hidden = ![...card.querySelectorAll('.share-body > p, .share-body > blockquote')].some(el => el.scrollHeight > el.clientHeight + 1);
+  });
+}
+
+// ジャンル・タグで絞り込む（両方を選んだら、両方に当てはまるものだけ）
+function countValues(items, getter) {
+  const counts = new Map();
+  items.forEach(x => getter(x).forEach(key => counts.set(key, (counts.get(key) || 0) + 1)));
+  return [...counts].sort((a, b) => a[0].localeCompare(b[0], 'ja'));
+}
+
+function filterSelect(id, label, allLabel, counts) {
+  const wrap = node('label', 'share-filter');
+  wrap.htmlFor = id;
+  const select = node('select', '');
+  select.id = id;
+  select.append(new Option(allLabel, ''));
+  counts.forEach(([name, count]) => select.append(new Option(`${name}（${count}）`, name)));
+  wrap.append(node('small', '', label), select);
+  return { wrap, select };
 }
 
 function renderShare(root, result) {
@@ -115,9 +153,35 @@ function renderShare(root, result) {
   root.append(header);
   const spoilers = items.some(x => x.spoiler || [x.notes, x.quote].some(t => new RegExp(SHARE_SPOILER.source).test(String(t || ''))));
   if (spoilers) root.append(node('p', 'share-note', 'ネタバレの部分は隠しています。押すと表示されます。'));
+  const genres = countValues(items, x => [String(x.genre ?? '')].filter(Boolean));
+  const tags = countValues(items, x => (Array.isArray(x.tags) ? x.tags : []).map(String).filter(Boolean));
   const list = node('div', 'share-list');
-  items.forEach(item => list.append(renderShareItem(item)));
-  root.append(list);
+  const empty = node('p', 'share-message', '条件に合う記録がありません。');
+  empty.hidden = true;
+  const count = node('p', 'share-count');
+  count.setAttribute('role', 'status');
+  const draw = (genre, tag) => {
+    const shown = items.filter(x => (!genre || String(x.genre ?? '') === genre) && (!tag || (Array.isArray(x.tags) && x.tags.map(String).includes(tag))));
+    list.replaceChildren(...shown.map(renderShareItem));
+    empty.hidden = shown.length > 0;
+    count.textContent = genre || tag ? `${shown.length}件を表示（全${items.length}件）` : '';
+    updateClamps(list);
+  };
+  if (genres.length > 1 || tags.length) {
+    const bar = node('div', 'share-filters');
+    const g = filterSelect('share-genre', 'ジャンル', 'すべてのジャンル', genres);
+    const tg = filterSelect('share-tag', 'タグ', 'すべてのタグ', tags);
+    const apply = () => draw(g.select.value, tg.select.value);
+    g.select.onchange = apply;
+    tg.select.onchange = apply;
+    if (genres.length > 1) bar.append(g.wrap);
+    if (tags.length) bar.append(tg.wrap);
+    root.append(bar, count);
+  }
+  root.append(list, empty);
+  draw('', '');
+  window.addEventListener('resize', () => updateClamps(list));
+  list.addEventListener('toggle', () => updateClamps(list), true);
   const invite = node('p', 'share-invite');
   const link = node('a', '', 'よかっ棚で、自分の棚をつくる');
   link.href = './';
