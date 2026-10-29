@@ -339,8 +339,9 @@ function normalizeItem(raw) {
     rating:Math.min(5,Math.max(3,Number(raw.rating)||3)),
     tags:Array.isArray(raw.tags)?[...new Set(raw.tags.map(t=>String(t).trim()).filter(Boolean))]:[],
     ...(()=> {
-      const legacy=raw.spoiler===true;
       let notes=String(raw.notes??'').trim(),quote=String(raw.quote??'').trim().slice(0,1000);
+      // 以前の印かどうかは、「||」がどちらの欄にもないときだけ。今の記録（片方に「||」がある）の、もう片方を囲まないため
+      const legacy=raw.spoiler===true&&!hasSpoiler(notes)&&!hasSpoiler(quote);
       if(legacy) { notes=wrapSpoiler(notes); quote=wrapSpoiler(quote); }
       return { notes,quote,spoiler:hasSpoiler(notes)||hasSpoiler(quote) }
     })(),
