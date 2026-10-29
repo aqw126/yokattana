@@ -961,3 +961,37 @@ test('表紙: 長辺450px の WebP で保存し、WebP を書き出せないブ�
   c.width = c.height = 4;
   assert(encodeCanvas(c, 0.7, false).startsWith('data:image/jpeg'), 'jpeg fallback');
 });
+
+test('作品の検索: 応答しない検索先は時間で打ち切り、失敗した検索先の名前を伝える', async () => {
+  resetApp();
+  openEditor();
+  $('#title').value = 'フリーレン';
+  const original = WORK_SEARCH_TIMEOUT;
+  WORK_SEARCH_TIMEOUT = 60;
+  try {
+    await withFetch(url => {
+      if (url.startsWith(ANILIST)) return new Response(JSON.stringify(ANILIST_JSON));
+      if (url.startsWith(ITUNES)) return new Promise(() => {});
+      return Promise.reject(new Error('offline'));
+    }, runWorkSearch);
+  } finally { WORK_SEARCH_TIMEOUT = original; }
+  const status = $('#work-status').textContent;
+  assert(status.includes('Apple Books') && status.includes('Wikidata') && status.includes('国立国会図書館') && !status.includes('AniList'), status);
+  assert(!status.includes('探しています'), 'not stuck searching');
+  $('#dialog').close();
+});
+
+test('一覧: 記録が変わらないあいだは、削除されていない記録・ジャンル・タグの一覧を使い回す', () => {
+  resetApp();
+  setItems([make({ title: 'A', genre: '本', tags: ['x'] }), make({ title: 'B', genre: '漫画', tags: ['y'], deleted: true })]);
+  assert(liveItems() === liveItems() && genres() === genres() && alltags() === alltags(), 'reused');
+  eq([genres(), alltags()], [['本'], ['x']]);
+  state.items = [...state.items, make({ title: 'C', genre: 'アニメ', tags: ['z'] })];
+  eq([genres(), alltags()], [['アニメ', '本'], ['x', 'z']]);
+});
+
+test('オフライン: Service Worker は、自分のファイルの保存に失敗したらインストールを失敗させ、?v= 付きは保存済みならネットワークに聞かない', async () => {
+  const sw = await fetch('../sw.js').then(r => r.text());
+  assert(!/cache\.add\(new Request\(url[^\n]*\.catch/.test(sw), 'own files must not swallow failures');
+  assert(/searchParams\.has\('v'\)\) return cached/.test(sw), 'cache first for versioned files');
+});

@@ -1,9 +1,9 @@
 // オフラインでも開けて、2回目からはすぐに表示できるようにする Service Worker。
 // 方針: 保存済みの内容をすぐに返し、裏でネットワークから取り直して保存し直す（次に開いたときに最新になる）。
-// 保存済みの内容がないときだけ、ネットワークを待つ。
+// 保存済みの内容がないときだけ、ネットワークを待つ。?v= 付きのファイルは、保存済みならネットワークには聞かない。
 // 公開した新しい版は、この sw.js が変わることで届く（新しい版を保存し直し、app.js がトーストで知らせる）。
 // VERSION は tools/bump-version.py が更新する。
-const VERSION = '202610292113';
+const VERSION = '202610292123';
 const CACHE = 'yokattana-' + VERSION;
 // 版を固定しているので、中身は変わらない。保存済みならネットワークに問い合わせない
 const SUPABASE_JS = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js';
@@ -29,7 +29,10 @@ self.addEventListener('install', event => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE);
     const urls = [...ASSETS, ...VERSIONED, ...VERSIONED.map(name => `${name}?v=${VERSION}`)];
-    await Promise.all(urls.map(url => cache.add(new Request(url, { cache: 'reload' })).catch(() => {})));
+    // 自分のサイトのファイルは、1つでも保存できなければインストールを失敗させる（一部だけ欠けた版が有効になり、
+    // オフラインで app.js と store.js の版が食い違うのを防ぐ。失敗しても古い版が動き続け、次の確認でやり直される）
+    await Promise.all(urls.map(url => cache.add(new Request(url, { cache: 'reload' }))));
+    // supabase-js は外部（CDN）なので、保存できなくても止めない（開けるが、ログインはオンラインで読み直す）
     await cache.add(new Request(SUPABASE_JS, { mode: 'cors', cache: 'reload' })).catch(() => {});
     await self.skipWaiting();
   })());
@@ -57,6 +60,8 @@ self.addEventListener('fetch', event => {
     // ページ以外は、?v= まで一致したものだけを使う（古い版の app.js を新しい版のページと組み合わせない）
     const cached = await cache.match(key);
     if (cached && url.href === SUPABASE_JS) return cached;
+    // ?v= 付きの URL は中身が変わらない（版ごとに別の URL）ので、保存済みならネットワークに問い合わせない
+    if (cached && !navigate && url.origin === self.location.origin && url.searchParams.has('v')) return cached;
     const network = fetch(request, { cache: 'no-cache' }).then(async response => {
       if (response.ok) await cache.put(key, response.clone());
       return response;

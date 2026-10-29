@@ -367,8 +367,11 @@ function saveLegacy() {
     return false
   }
 }
+// 削除されていない記録。state.items は更新のたびに新しい配列になるので、同じ配列のあいだは前の結果を使い回す
+let liveCache= { src:null,list:[] };
 function liveItems() {
-  return state.items.filter(x=>!x.deleted)
+  if(liveCache.src!==state.items) liveCache= { src:state.items,list:state.items.filter(x=>!x.deleted) };
+  return liveCache.list
 }
 // 画像は WebP で保存する（同じ見た目で JPEG の半分ほど）。WebP で書き出せないブラウザ（返ってくるのが PNG）は JPEG にする
 const WEBP_OK=(()=> {
@@ -607,11 +610,17 @@ async function shrinkExistingCovers() {
   }
   finally { shrinking=false; }
 }
+// ジャンルとタグの一覧（並べ替えが重いので、記録が変わるまで使い回す）
+const listCache= { genres:null,tags:null };
 function genres() {
-  return[...new Set(liveItems().map(x=>x.genre))].sort((a,b)=>a.localeCompare(b,'ja'))
+  const live=liveItems();
+  if(listCache.genres?.src!==live) listCache.genres= { src:live,list:[...new Set(live.map(x=>x.genre))].sort((a,b)=>a.localeCompare(b,'ja')) };
+  return listCache.genres.list
 }
 function alltags() {
-  return[...new Set(liveItems().flatMap(x=>x.tags))].sort((a,b)=>a.localeCompare(b,'ja'))
+  const live=liveItems();
+  if(listCache.tags?.src!==live) listCache.tags= { src:live,list:[...new Set(live.flatMap(x=>x.tags))].sort((a,b)=>a.localeCompare(b,'ja')) };
+  return listCache.tags.list
 }
 const filters= { genre:new Set(),tag:new Set(),rating:new Set() },filterKeys= {},selection=new Set();
 // 評価の絞り込みは、0.5刻みの4つの帯。評価は0.1刻みなので、10倍した整数で比べる（小数の誤差を避ける）
@@ -1115,6 +1124,11 @@ function workOption(work) {
   return button
 }
 // 本の検索は時間がかかるので、先に届いた結果から順に出す
+let WORK_SEARCH_TIMEOUT=10000;
+function withTimeout(promise,ms) {
+  let timer;
+  return Promise.race([promise,new Promise((_,reject)=> { timer=setTimeout(()=>reject(new Error('timeout')),ms); })]).finally(()=>clearTimeout(timer))
+}
 async function runWorkSearch() {
   const query=$('#title').value.trim(),box=$('#work-results');
   closeWorkResults();
@@ -1125,7 +1139,10 @@ async function runWorkSearch() {
     return
   }
   $('#work-status').textContent='検索しています…';
-  const searches=tmdbKey()?[searchAniList(query),searchAppleBooks(query),searchTmdb(query),searchWikidata(query,['game']),searchAppStore(query),searchNdl(query)]:[searchAniList(query),searchAppleBooks(query),searchWikidata(query),searchAppStore(query),searchNdl(query)];
+  // 検索先ごとに、名前と待つ時間の上限をつける（応答しない検索先で、いつまでも「探しています」のままにならないように）
+  const sources=[['AniList',searchAniList],['Apple Books',searchAppleBooks],...(tmdbKey()?[['TMDB',searchTmdb]]:[]),['Wikidata',q=>searchWikidata(q,tmdbKey()?['game']:undefined)],['App Store',searchAppStore],['国立国会図書館',searchNdl]];
+  const searches=sources.map(([name,run])=>withTimeout(run(query),WORK_SEARCH_TIMEOUT).catch(()=> { throw name; }));
+  const failedNames=[];
   // 同じ作品（題名と作者が同じ）が別の検索先からも届いたら、先に届いた方だけを出す
   const seen=new Set();
   let found=0,failed=0,left=searches.length;
@@ -1133,7 +1150,7 @@ async function runWorkSearch() {
     if(left) return found?`${found}件の候補が見つかりました。ほかの候補も探しています…`:'検索しています…';
     if(failed===searches.length) return'作品を検索できませんでした。通信状況を確かめて、もう一度お試しください。';
     if(!found) return'見つかりませんでした。別の書き方でもお試しください。';
-    return`${found}件の候補が見つかりました。選ぶと入力されます。${failed?'（一部の検索に失敗しました）':''}`
+    return`${found}件の候補が見つかりました。選ぶと入力されます。${failed?`（${failedNames.join('・')}の検索に失敗しました）`:''}`
   };
   await Promise.all(searches.map(search=>search.then(list=> {
     if(id!==workSearchId) return;
@@ -1145,7 +1162,7 @@ async function runWorkSearch() {
       found++
     });
     box.hidden=!found
-  },()=> { failed++; }).finally(()=> {
+  },name=> { failed++; failedNames.push(name); }).finally(()=> {
     left--;
     if(id===workSearchId) $('#work-status').textContent=status()
   })))
@@ -1477,7 +1494,7 @@ function csvCell(value) {
 }
 function exportCsv() {
   const header=['タイトル','ジャンル','評価','読んだ日','タグ','メモ','引用','ネタバレ','追加日'];
-  const rows=liveItems().sort((a,b)=>new Date(a.createdAt)-new Date(b.createdAt)).map(x=>[x.title,x.genre,x.rating.toFixed(1),x.readAt||'',x.tags.join(';'),x.notes,x.quote,x.spoiler?'あり':'',localDay(new Date(x.createdAt))]);
+  const rows=[...liveItems()].sort((a,b)=>new Date(a.createdAt)-new Date(b.createdAt)).map(x=>[x.title,x.genre,x.rating.toFixed(1),x.readAt||'',x.tags.join(';'),x.notes,x.quote,x.spoiler?'あり':'',localDay(new Date(x.createdAt))]);
   const text='\ufeff'+[header,...rows].map(row=>row.map(csvCell).join(',')).join('\r\n')+'\r\n';
   const url=URL.createObjectURL(new Blob([text], { type:'text/csv;charset=utf-8' })),a=document.createElement('a');
   a.href=url;
