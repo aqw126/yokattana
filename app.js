@@ -2036,8 +2036,8 @@ function openShare(items,title,criteria) {
   $('#share-create').disabled=!currentUser;
   $('#share-summary').textContent=`共有する記録：${items.length}件（${criteria}）`+(items.length>SHARE_LIMIT?`。共有できるのは${SHARE_LIMIT}件までです。絞り込んでください。`:'');
   $('#share-result').hidden=true;
-  // 表紙は、毎回選んだときだけ含める
-  $('#share-covers').checked=false;
+  // 表紙は、開くたびに「含める」へ戻す
+  $('#share-covers').checked=true;
   $('#share-native').hidden=!navigator.share;
   $('#share-dialog').showModal();
   loadMyShares()

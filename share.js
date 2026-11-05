@@ -75,7 +75,11 @@ function renderCover(item) {
     img.src = item.cover;
     art.append(img);
   }
-  else art.append(node('span', '', String(item.title ?? '').trim().slice(0, 1)));
+  else {
+    // 表紙がないときは、本の装丁のように、題名とジャンルを載せる
+    art.classList.add('share-art-plain');
+    art.append(node('span', 'share-art-title', String(item.title ?? '').trim()), node('small', '', String(item.genre ?? '')));
+  }
   return art;
 }
 
