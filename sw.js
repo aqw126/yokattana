@@ -3,7 +3,7 @@
 // 保存済みの内容がないときだけ、ネットワークを待つ。?v= 付きのファイルは、保存済みならネットワークには聞かない。
 // 公開した新しい版は、この sw.js が変わることで届く（新しい版を保存し直し、app.js がトーストで知らせる）。
 // VERSION は tools/bump-version.py が更新する。
-const VERSION = '202611051412';
+const VERSION = '202611051501';
 const CACHE = 'yokattana-' + VERSION;
 // 版を固定しているので、中身は変わらない。保存済みならネットワークに問い合わせない
 const SUPABASE_JS = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js';
@@ -23,7 +23,7 @@ const ASSETS = [
   'share.html'
 ];
 // 各ページが ?v= を付けて読むもの。読むときと同じ URL で保存しておく
-const VERSIONED = ['styles.css', 'app.js', 'store.js', 'supabase-config.js', 'tmdb-config.js', 'support-config.js', 'share.js'];
+const VERSIONED = ['styles.css', 'app.js', 'store.js', 'supabase-config.js', 'tmdb-config.js', 'share.js'];
 
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
