@@ -314,6 +314,19 @@ function toggleSpoiler(value,start,end) {
 function withoutSpoilers(text) {
   return String(text||'').replace(SPOILER,'（ネタバレのため省略）').trim()
 }
+// タグのネタバレは、タグ全体を「||」で囲んだ形（「||犯人は兄||」）。記録の形式は変えない
+const SPOILER_TAG=/^\|\|([\s\S]+)\|\|$/;
+function isSpoilerTag(tag) {
+  return SPOILER_TAG.test(tag)&&tagLabel(tag)!==tag
+}
+// 画面に出す名前（「||」を外したもの）
+function tagLabel(tag) {
+  const m=SPOILER_TAG.exec(String(tag));
+  return m&&m[1].trim()?m[1].trim():String(tag)
+}
+function toggleSpoilerTag(tag) {
+  return isSpoilerTag(tag)?tagLabel(tag):`||${tag}||`
+}
 // 以前の「記録全体がネタバレ」の印は、メモ・引用の全体を「||」で囲む形に置き換える（隠れていたものが見えないように）
 function wrapSpoiler(text) {
   return text&&!hasSpoiler(text)?`||${text}||`:text
@@ -617,6 +630,10 @@ function genres() {
   if(listCache.genres?.src!==live) listCache.genres= { src:live,list:[...new Set(live.map(x=>x.genre))].sort((a,b)=>a.localeCompare(b,'ja')) };
   return listCache.genres.list
 }
+// 一覧・集計での表示（「||」を外し、ネタバレのタグには印を付ける）
+function tagText(tag) {
+  return isSpoilerTag(tag)?`${tagLabel(tag)}（ネタバレ）`:tag
+}
 function alltags() {
   const live=liveItems();
   if(listCache.tags?.src!==live) listCache.tags= { src:live,list:[...new Set(live.flatMap(x=>x.tags))].sort((a,b)=>a.localeCompare(b,'ja')) };
@@ -705,7 +722,7 @@ function maskedSpoilers(text) {
 }
 function render() {
   renderFilter('genre',genres());
-  renderFilter('tag',alltags());
+  renderFilter('tag',alltags(),tagText);
   // 評価は、帯ごとの件数（絞り込む前の全体）を添える
   const bandCounts=countBy(x=>[ratingBand(x.rating)]);
   renderFilter('rating',RATING_BANDS.map(([v])=>v),v=>`${RATING_NAMES[v]}（${bandCounts.find(([k])=>k===v)?.[1]||0}件）`,v=>RATING_NAMES[v]);
@@ -745,7 +762,9 @@ function render() {
     n.querySelector('h3').textContent=x.title;
     n.querySelector('.tags').replaceChildren(...[...x.tags.slice(0,4),...(x.tags.length>4?[`+${x.tags.length-4}`]:[])].map(t=> {
       const span=document.createElement('span');
-      span.textContent=t;
+      // ネタバレのタグは、カードでは「ネタバレ」に置き換える
+      if(isSpoilerTag(t)) span.className='spoiler-mask';
+      span.textContent=isSpoilerTag(t)?'ネタバレ':t;
       return span
     }));
     let p=n.querySelector('.cardbody p');
@@ -807,22 +826,42 @@ function renderFormTags() {
   const container=$('#tag-chips');
   container.replaceChildren();
   state.formTags.forEach((tag,index)=> {
-    const chip=document.createElement('button');
-    chip.type='button';
+    const chip=document.createElement('span'),spoiler=isSpoilerTag(tag);
     chip.className='tag-chip';
-    chip.textContent=`${tag} ×`;
-    chip.setAttribute('aria-label',`${tag} を削除`);
-    chip.onclick=()=> {
+    if(spoiler) chip.classList.add('is-spoiler');
+    // 名前を押すと、ネタバレのタグにする／戻す。「×」で削除
+    const toggle=document.createElement('button');
+    toggle.type='button';
+    toggle.className='tag-toggle';
+    toggle.textContent=spoiler?`${tagLabel(tag)}（ネタバレ）`:tag;
+    toggle.setAttribute('aria-pressed',String(spoiler));
+    toggle.setAttribute('aria-label',`${tagLabel(tag)}：ネタバレのタグ`);
+    toggle.title=spoiler?'押すとネタバレを解除':'押すとネタバレのタグにする';
+    toggle.onclick=()=> {
+      const next=toggleSpoilerTag(tag);
+      if(state.formTags.includes(next)) state.formTags.splice(index,1);
+      else state.formTags[index]=next;
+      dirty=true;
+      renderFormTags()
+    };
+    const remove=document.createElement('button');
+    remove.type='button';
+    remove.className='tag-remove';
+    remove.textContent='×';
+    remove.setAttribute('aria-label',`${tagLabel(tag)} を削除`);
+    remove.onclick=()=> {
       state.formTags=state.formTags.filter((_,tagIndex)=>tagIndex!==index);
       dirty=true;
       renderFormTags()
     };
+    chip.append(toggle,remove);
     container.append(chip)
   })
 }
 function addFormTag() {
   const input=$('#tag-input');
-  const tag=input.value.trim();
+  let tag=input.value.trim();
+  if(tag&&$('#tag-spoiler').checked&&!isSpoilerTag(tag)) tag=`||${tag}||`;
   if(!tag||state.formTags.includes(tag)) return;
   state.formTags.push(tag);
   input.value='';
@@ -1721,7 +1760,7 @@ function fillManage(list,rows,kind) {
   rows.forEach(([name,count])=> {
     const li=document.createElement('li'),label=document.createElement('span'),rename=document.createElement('button');
     label.className='manage-name';
-    label.textContent=`${name}（${count}件）`;
+    label.textContent=`${kind==='tag'?tagText(name):name}（${count}件）`;
     rename.type='button';
     rename.className='link';
     rename.textContent='名前を変更';
@@ -1746,9 +1785,12 @@ function applyBulk(next,changed) {
   renderManage()
 }
 function renameOption(kind,from) {
-  const input=prompt(`「${from}」の新しい名前`,from);
+  const spoilerTag=kind==='tag'&&isSpoilerTag(from);
+  const input=prompt(`「${spoilerTag?tagLabel(from):from}」の新しい名前`,spoilerTag?tagLabel(from):from);
   if(input===null) return;
-  const to=input.trim().slice(0,kind==='genre'?40:80);
+  let to=input.trim().slice(0,kind==='genre'?40:80);
+  // ネタバレのタグは、名前を変えてもネタバレのまま
+  if(spoilerTag&&to&&!isSpoilerTag(to)) to=`||${to}||`;
   if(!to||to===from) return;
   if((kind==='genre'?genres():alltags()).includes(to)&&!confirm(`「${to}」はすでにあります。「${from}」の記録を「${to}」にまとめますか？`)) return;
   const now=new Date().toISOString(),changed=[];
@@ -1764,7 +1806,7 @@ function renameOption(kind,from) {
 }
 function deleteTag(tag) {
   const count=liveItems().filter(x=>x.tags.includes(tag)).length;
-  if(!confirm(`タグ「${tag}」を、${count}件の記録から外しますか？ 記録そのものは消えません。`)) return;
+  if(!confirm(`タグ「${tagLabel(tag)}」を、${count}件の記録から外しますか？ 記録そのものは消えません。`)) return;
   const now=new Date().toISOString(),changed=[];
   const next=state.items.map(x=> {
     if(x.deleted||!x.tags.includes(tag)) return x;
@@ -1830,7 +1872,7 @@ function drawReview() {
   }
   const ranked=rows=>rows.sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0],'ja')).slice(0,8);
   drawBars($('#review-genres'),ranked(countBy(x=>[x.genre],items)));
-  drawBars($('#review-tags'),ranked(countBy(x=>x.tags,items)));
+  drawBars($('#review-tags'),ranked(countBy(x=>x.tags,items)).map(([t,n])=>[tagText(t),n]));
   const list=$('#review-top');
   list.replaceChildren();
   if(!top.length) {
@@ -1926,12 +1968,12 @@ function makeShareToken() {
   const bytes=crypto.getRandomValues(new Uint8Array(16));
   return btoa(String.fromCharCode(...bytes)).replaceAll('+','-').replaceAll('/','_').replaceAll('=','')
 }
-// mode: none = メモ・引用を含めない / safe = ネタバレなしの記録だけ / all = すべて（ネタバレ記録には印を付ける）
+// mode: none = メモ・引用を含めない / safe = ネタバレの部分（ネタバレのタグも）を除く / all = すべて（ネタバレ記録には印を付ける）
 function sharePayload(items,{ title,criteria,mode }) {
   return {
     v:2,title:String(title||'').slice(0,100),criteria:String(criteria||'').slice(0,200),sharedAt:new Date().toISOString(),
     items:items.slice(0,SHARE_LIMIT).map(x=> {
-      const out= { title:x.title,genre:x.genre,rating:x.rating,readAt:x.readAt||null,tags:[...x.tags] };
+      const out= { title:x.title,genre:x.genre,rating:x.rating,readAt:x.readAt||null,tags:x.tags.filter(t=>mode!=='safe'||!isSpoilerTag(t)) };
       // safe: ネタバレの部分を「（ネタバレのため省略）」にして送る。all: 「||」のまま送り、閲覧ページで隠す
       // 「||」のない古い形（記録全体がネタバレ）でも漏らさないよう、ここでも全体を囲む
       const legacy=x.spoiler&&!hasSpoiler(x.notes)&&!hasSpoiler(x.quote),src=legacy? { notes:wrapSpoiler(x.notes),quote:wrapSpoiler(x.quote) }:x;
@@ -1945,7 +1987,7 @@ function criteriaText() {
   const parts=[],query=$('#query').value.trim();
   if(query) parts.push(`検索：${query}`);
   if(filters.genre.size) parts.push(`ジャンル：${[...filters.genre].join('、')}`);
-  if(filters.tag.size) parts.push(`タグ：${[...filters.tag].join('、')}`);
+  if(filters.tag.size) parts.push(`タグ：${[...filters.tag].map(tagText).join('、')}`);
   if(filters.rating.size) parts.push(`評価：${RATING_BANDS.filter(([v])=>filters.rating.has(v)).map(([,n])=>n).join('、')}`);
   return parts.join(' / ')||'すべての記録'
 }

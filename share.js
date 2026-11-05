@@ -27,6 +27,19 @@ function withSpoilers(tag, text) {
   return el;
 }
 
+// タグ全体が「||」で囲まれていればネタバレ。押すと、そのタグだけが表示される
+const SHARE_SPOILER_TAG = /^\|\|([\s\S]+)\|\|$/;
+
+function tagNode(tag) {
+  const m = SHARE_SPOILER_TAG.exec(tag);
+  if (!m || !m[1].trim()) return node('span', '', tag);
+  const button = node('button', 'spoiler-reveal', 'ネタバレ');
+  button.type = 'button';
+  button.setAttribute('aria-label', 'ネタバレのタグ（押すと表示）');
+  button.onclick = () => button.replaceWith(node('span', 'spoiler-shown', m[1].trim()));
+  return button;
+}
+
 function formatDay(value) {
   const d = new Date(value);
   return isNaN(d) ? '' : new Intl.DateTimeFormat('ja-JP', { year: 'numeric', month: 'numeric', day: 'numeric' }).format(d);
@@ -76,7 +89,7 @@ function renderShareItem(item) {
   if (item.readAt) main.append(node('p', 'share-date', formatDay(item.readAt + 'T00:00:00')));
   if (Array.isArray(item.tags) && item.tags.length) {
     const tags = node('div', 'tags');
-    item.tags.forEach(tag => tags.append(node('span', '', String(tag))));
+    item.tags.forEach(tag => tags.append(tagNode(String(tag))));
     main.append(tags);
   }
   card.append(renderCover(item), main);
@@ -151,10 +164,10 @@ function renderShare(root, result) {
   const meta = [payload.criteria, payload.sharedAt ? formatDay(payload.sharedAt) + ' に共有' : ''].filter(Boolean).join(' ・ ');
   if (meta) header.append(node('p', 'share-meta', meta));
   root.append(header);
-  const spoilers = items.some(x => x.spoiler || [x.notes, x.quote].some(t => new RegExp(SHARE_SPOILER.source).test(String(t || ''))));
+  const spoilers = items.some(x => x.spoiler || (Array.isArray(x.tags) && x.tags.some(t => SHARE_SPOILER_TAG.test(String(t)))) || [x.notes, x.quote].some(t => new RegExp(SHARE_SPOILER.source).test(String(t || ''))));
   if (spoilers) root.append(node('p', 'share-note', 'ネタバレの部分は隠しています。押すと表示されます。'));
   const genres = countValues(items, x => [String(x.genre ?? '')].filter(Boolean));
-  const tags = countValues(items, x => (Array.isArray(x.tags) ? x.tags : []).map(String).filter(Boolean));
+  const tags = countValues(items, x => (Array.isArray(x.tags) ? x.tags : []).map(String).filter(t => t && !SHARE_SPOILER_TAG.test(t)));
   const list = node('div', 'share-list');
   const empty = node('p', 'share-message', '条件に合う記録がありません。');
   empty.hidden = true;

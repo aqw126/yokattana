@@ -187,6 +187,24 @@ test('カードのタグ: HTML として解釈せず、5件目以降は件数で
   eq(window.__xss, undefined);
 });
 
+test('ネタバレのタグ: 判定・切り替えと、カードでの隠し方', () => {
+  eq([isSpoilerTag('||犯人||'), isSpoilerTag('犯人'), isSpoilerTag('||||'), isSpoilerTag('|| ||')], [true, false, false, false]);
+  eq([tagLabel('||犯人||'), tagLabel('犯人')], ['犯人', '犯人']);
+  eq([toggleSpoilerTag('犯人'), toggleSpoilerTag('||犯人||')], ['||犯人||', '犯人']);
+  resetApp();
+  setItems([make({ title: 'T', tags: ['SF', '||犯人は兄||'] })]);
+  const spans = [...document.querySelectorAll('#grid article .tags span')];
+  eq(spans.map(x => x.textContent), ['SF', 'ネタバレ']);
+  assert(spans[1].classList.contains('spoiler-mask'));
+  assert(!document.querySelector('#grid article').textContent.includes('犯人は兄'), 'タグの中身が出ていない');
+});
+
+test('ネタバレのタグ: 共有の「ネタバレを除く」では送らない', () => {
+  const items = [make({ title: 'T', tags: ['SF', '||犯人は兄||'] })];
+  eq(sharePayload(items, { title: 't', criteria: 'c', mode: 'safe' }).items[0].tags, ['SF']);
+  eq(sharePayload(items, { title: 't', criteria: 'c', mode: 'all' }).items[0].tags, ['SF', '||犯人は兄||']);
+});
+
 // ---- CSV ----
 test('parseCsv: 引用符、改行、BOM、CRLFを扱う', () => {
   const rows = parseCsv('﻿a,b\r\n"x,1","he said ""hi""\nnext"\r\n');

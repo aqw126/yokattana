@@ -612,6 +612,11 @@ dialog footer {
 .tag-chip:hover {
   background:var(--chip-hover);
 }
+.tag-chip { padding:0; gap:0; overflow:hidden; }
+.tag-chip button { border:0; background:transparent; color:inherit; font:inherit; padding:5px 6px 5px 10px; cursor:pointer; }
+.tag-chip .tag-remove { padding:5px 10px 5px 4px; }
+.tag-chip.is-spoiler { background:var(--ink); color:var(--canvas); }
+.tag-spoiler-row { margin-top:6px; font-size:12px; }
 .tag-input-row {
   display:flex;
   gap:8px;
@@ -797,6 +802,7 @@ dialog footer {
 .grid footer small { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
 .cardbody blockquote[hidden], .spoiler-badge[hidden] { display:none; }
 .spoiler-badge { font-style:normal; font-size:10px; padding:1px 6px; border-radius:10px; background:var(--pale); color:var(--warm); }
+.tags span.spoiler-mask { font-size:10px; padding:4px 8px; border-radius:20px; background:var(--ink); color:var(--canvas); }
 .spoiler-mask { display:inline-block; margin:0 2px; padding:0 8px; border-radius:4px; background:var(--ink); color:var(--canvas); font-size:11px; line-height:1.6; vertical-align:baseline; }
 .spoiler-tool { display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; margin-top:-8px; }
 .spoiler-tool .secondary { padding:7px 12px; font-size:12px; }
