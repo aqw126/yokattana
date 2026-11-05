@@ -206,7 +206,19 @@ async function loadShare() {
   }
 }
 
+// 応援のリンク（support-config.js）。設定が空、または https:// 以外なら出さない
+function applyShareDonate() {
+  const url = String(window.SUPPORT_CONFIG?.donateUrl ?? '').trim();
+  const ok = /^https:\/\//.test(url);
+  const wrap = document.getElementById('donate-wrap');
+  const link = document.getElementById('donate-link');
+  if (!wrap || !link) return;
+  wrap.hidden = !ok;
+  if (ok) link.href = url; else link.removeAttribute('href');
+}
+
 if (document.body.dataset.page === 'share') {
+  applyShareDonate();
   loadShare();
   window.addEventListener('hashchange', () => location.reload());
 }
