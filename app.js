@@ -1228,8 +1228,37 @@ function resetForm() {
   preview(null);
   dirty=false
 }
+// 応援のリンク（support-config.js）。設定が空のものは出さない。https:// 以外は使わない
+function supportConfig() {
+  const c=window.SUPPORT_CONFIG||{},text=v=>String(v??'').trim();
+  return { donateUrl:/^https:\/\//.test(text(c.donateUrl))?text(c.donateUrl):'',amazonTag:text(c.amazonTag),rakutenId:text(c.rakutenId) }
+}
+function shopLinks(title) {
+  const c=supportConfig(),q=encodeURIComponent(String(title||'').trim());
+  if(!q) return { amazon:'',rakuten:'' };
+  return {
+    amazon:c.amazonTag?`https://www.amazon.co.jp/s?k=${q}&tag=${encodeURIComponent(c.amazonTag)}`:'',
+    rakuten:c.rakutenId?`https://hb.afl.rakuten.co.jp/hgc/${encodeURIComponent(c.rakutenId)}/?pc=${encodeURIComponent(`https://search.rakuten.co.jp/search/mall/${q}/`)}`:''
+  }
+}
+function applyDonate() {
+  const url=supportConfig().donateUrl;
+  $('#donate-wrap').hidden=!url;
+  if(url) $('#donate-link').href=url; else $('#donate-link').removeAttribute('href')
+}
+function applyShopLinks(x) {
+  const links=x?shopLinks(x.title):{ amazon:'',rakuten:'' };
+  for(const [key,id] of [['amazon','#shop-amazon'],['rakuten','#shop-rakuten']]) {
+    const a=$(id);
+    a.hidden=!links[key];
+    if(links[key]) a.href=links[key]; else a.removeAttribute('href')
+  }
+  $('#shop-links').hidden=!(links.amazon||links.rakuten)
+}
+applyDonate();
 function openEditor(x) {
   resetForm();
+  applyShopLinks(x);
   $('#kicker').textContent=x?'EDIT ENTRY':'NEW ENTRY';
   $('#modalTitle').textContent=x?'記録を編集':'記録を追加';
   $('#delete').hidden=!x;

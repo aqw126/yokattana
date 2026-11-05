@@ -17,7 +17,7 @@
     <link rel="apple-touch-icon" href="apple-touch-icon.png">
     <script src="theme.js"></script>
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="styles.css?v=202610292135">
+    <link rel="stylesheet" href="styles.css?v=202611051412">
   </head>
   <body>
     <a class="skip-link" href="#top">本文へ移動</a>
@@ -191,7 +191,7 @@
       <div class="more-row"><button class="secondary" id="more" type="button" hidden>さらに表示</button></div>
     </main>
     <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
-    <p class="site-footer"><a href="guide.html">使い方</a>　<a href="privacy.html">プライバシーポリシー</a></p>
+    <p class="site-footer"><a href="guide.html">使い方</a>　<a href="privacy.html">プライバシーポリシー</a><span id="donate-wrap" hidden>　<a id="donate-link" target="_blank" rel="noopener">応援する</a></span></p>
     <p class="site-footer tmdb-credit" id="tmdb-credit" hidden><img src="tmdb-logo.svg" alt="TMDB" width="110" height="14"><br>映画・ドラマの情報とポスターは TMDB のものです。このアプリは TMDB API を使っていますが、TMDB の承認・認定を受けたものではありません。</p>
     <dialog id="dialog" aria-labelledby="modalTitle">
       <form id="form">
@@ -301,6 +301,10 @@
             </div>
           </div>
         </section>
+        <p class="shop-links" id="shop-links" hidden>
+          <span>この作品を探す：</span><a id="shop-amazon" target="_blank" rel="noopener sponsored" hidden>Amazon</a><a id="shop-rakuten" target="_blank" rel="noopener sponsored" hidden>楽天</a>
+          <small>PR：リンクから買うと、運営者に紹介料が入ることがあります。</small>
+        </p>
         <footer>
           <button class="link danger" id="delete" type="button" hidden>
             この記録を削除
@@ -508,10 +512,11 @@
       </article>
     </template>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js" integrity="sha384-TcHRA3zBbn+Lexh5n+Oil4guNPOS3rjNDpGRAN46u/s/mB2IZ50ceC6TYDU2yvgK" crossorigin="anonymous"></script>
-    <script src="supabase-config.js?v=202610292135"></script>
-    <script src="tmdb-config.js?v=202610292135"></script>
-    <script src="store.js?v=202610292135"></script>
-    <script src="app.js?v=202610292135"></script>
+    <script src="supabase-config.js?v=202611051412"></script>
+    <script src="tmdb-config.js?v=202611051412"></script>
+    <script src="support-config.js?v=202611051412"></script>
+    <script src="store.js?v=202611051412"></script>
+    <script src="app.js?v=202611051412"></script>
   </body>
 </html>
 
