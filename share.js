@@ -66,6 +66,12 @@ function renderStars(rating) {
   return wrap;
 }
 
+// 日本語と英数字の境目で勝手に改行されないよう、境目に WORD JOINER（見えない文字）を入れる（表示だけ）
+const SHARE_CJK = '[\\u3040-\\u30ff\\u3400-\\u9fff\\uff00-\\uffef]';
+function joinScripts(text) {
+  return String(text).replace(new RegExp(`(${SHARE_CJK})(?=[A-Za-z0-9])|([A-Za-z0-9])(?=${SHARE_CJK})`, 'g'), '$1$2\u2060');
+}
+
 function renderCover(item) {
   const art = node('div', 'share-art');
   if (typeof item.cover === 'string' && SHARE_COVER_PATTERN.test(item.cover)) {
@@ -78,7 +84,7 @@ function renderCover(item) {
   else {
     // 表紙がないときは、本の装丁のように、題名を載せる
     art.classList.add('share-art-plain');
-    art.append(node('span', 'share-art-title', String(item.title ?? '').trim()));
+    art.append(node('span', 'share-art-title', joinScripts(String(item.title ?? '').trim())));
   }
   return art;
 }
@@ -89,7 +95,7 @@ function renderShareItem(item) {
   const main = node('div', 'share-main');
   const head = node('div', 'share-item-head');
   head.append(node('b', '', String(item.genre ?? '')), renderStars(item.rating));
-  main.append(head, node('h2', '', String(item.title ?? '')));
+  main.append(head, node('h2', '', joinScripts(item.title ?? '')));
   if (item.readAt) main.append(node('p', 'share-date', formatDay(item.readAt + 'T00:00:00')));
   if (Array.isArray(item.tags) && item.tags.length) {
     const tags = node('div', 'tags');

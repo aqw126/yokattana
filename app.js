@@ -598,6 +598,11 @@ async function collectCovers() {
   const used=new Set(state.items.map(x=>x.cover?.hash).filter(Boolean));
   await LocalStore.deleteCovers((await LocalStore.coverHashes()).filter(h=>!used.has(h)))
 }
+// 日本語と英数字の境目で勝手に改行されないよう、境目に WORD JOINER（見えない文字）を入れる。表示だけに使い、保存はしない
+const CJK_CHAR='[\\u3040-\\u30ff\\u3400-\\u9fff\\uff00-\\uffef]';
+function joinScripts(text) {
+  return String(text).replace(new RegExp(`(${CJK_CHAR})(?=[A-Za-z0-9])|([A-Za-z0-9])(?=${CJK_CHAR})`,'g'),'$1$2\u2060')
+}
 function tidyCovers() {
   return storeMode==='idb'?internSoon():shrinkExistingCovers()
 }
@@ -748,7 +753,7 @@ function render() {
   list.slice(0,shownLimit).forEach(x=> {
     let n=tpl.content.cloneNode(true),img=n.querySelector('img'),letter=n.querySelector('.art span'),art=n.querySelector('.art');
     // 表紙がないときは、本の装丁のように、題名を載せる
-    letter.textContent=x.title.trim()||'（題名なし）';
+    letter.textContent=joinScripts(x.title.trim()||'（題名なし）');
     art.classList.toggle('plain',!x.cover);
     if(x.cover) {
       img.loading='lazy';
@@ -761,7 +766,7 @@ function render() {
     }
     n.querySelector('.meta b').textContent=x.genre;
     n.querySelector('.meta strong').textContent='★ '+Number(x.rating).toFixed(1);
-    n.querySelector('h3').textContent=x.title;
+    n.querySelector('h3').textContent=joinScripts(x.title);
     n.querySelector('.tags').replaceChildren(...[...x.tags.slice(0,4),...(x.tags.length>4?[`+${x.tags.length-4}`]:[])].map(t=> {
       const span=document.createElement('span');
       // ネタバレのタグは、カードでは「ネタバレ」に置き換える
