@@ -81,11 +81,8 @@ function renderCover(item) {
     img.src = item.cover;
     art.append(img);
   }
-  else {
-    // 表紙がないときは、本の装丁のように、題名を載せる
-    art.classList.add('share-art-plain');
-    art.append(wrapAll(node('span', 'share-art-title', String(item.title ?? '').trim()), item.title));
-  }
+  // 表紙がないときは、題名を載せず、本の装丁だけを見せる
+  else art.classList.add('share-art-plain');
   return art;
 }
 

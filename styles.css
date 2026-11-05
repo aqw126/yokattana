@@ -238,10 +238,8 @@ aside span {
 }
 /* 表紙なし: 背表紙と枠のある、本のような見た目（共有ページの .share-art-plain と同じ） */
 .wrap-all { word-break:break-all }
-.art span { display:none }
 .art.plain { position:relative; padding:18px 16px 14px 26px; color:var(--art-ink); box-shadow:inset 10px 0 0 #00000014, inset 11px 0 0 #ffffff40 }
 .art.plain::before { content:""; position:absolute; inset:9px 9px 9px 19px; border:1px solid currentColor; opacity:.35; border-radius:4px; pointer-events:none }
-.art.plain span:not([hidden]) { display:-webkit-box; font-family:Georgia,'Hiragino Mincho ProN','Yu Mincho',serif; font-size:17px; line-height:26px; font-weight:700; text-align:center; overflow:hidden; -webkit-line-clamp:4; -webkit-box-orient:vertical; overflow-wrap:anywhere; min-width:0; max-width:100%; }
 .cardbody {
   padding:17px 17px 8px
 }
@@ -838,7 +836,6 @@ dialog footer {
 /* 表紙なし: 背表紙と枠のある、本のような見た目 */
 .share-art-plain { position:relative; place-items:center; padding:10px 8px 8px 14px; box-shadow:inset 6px 0 0 #00000014, inset 7px 0 0 #ffffff40; color:var(--art-ink); }
 .share-art-plain::before { content:""; position:absolute; inset:5px 5px 5px 11px; border:1px solid currentColor; opacity:.35; border-radius:3px; pointer-events:none; }
-.share-art-title { font-family:Georgia,'Hiragino Mincho ProN','Yu Mincho',serif; font-size:12px; line-height:18px; font-weight:700; text-align:center; overflow:hidden; display:-webkit-box; -webkit-line-clamp:4; -webkit-box-orient:vertical; overflow-wrap:anywhere; min-width:0; max-width:100%; }
 .share-main { min-width:0; }
 .share-item h2 { font-size:17px; line-height:1.5; margin:6px 0 2px; overflow-wrap:anywhere; min-width:0; max-width:100%; }
 .share-item-head { display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:12px; }

@@ -86,13 +86,12 @@ test('表紙: 保存すると参照になり、カードには画像として出
   currentUser = null;
 });
 
-test('表紙: 見つからない参照は、題名の装丁の表示に戻る', async () => {
+test('表紙: 見つからない参照は、装丁だけの表示に戻る', async () => {
   await freshStore();
   setItems([make({ title: '迷子', cover: { hash: 'b'.repeat(64) } })]);
   const card = document.querySelector('#grid article');
   for (let i = 0; i < 50 && !card.querySelector('img').hidden; i++) await new Promise(r => setTimeout(r, 20));
-  assert(card.querySelector('img').hidden && !card.querySelector('.art span').hidden, '装丁の題名を表示');
-  eq(card.querySelector('.art span').textContent, '迷子');
+  assert(card.querySelector('img').hidden, '画像は隠れる');
   assert(card.querySelector('.art').classList.contains('plain'), '装丁の表示');
 });
 
