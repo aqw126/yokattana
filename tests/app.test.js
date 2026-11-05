@@ -205,14 +205,12 @@ test('ネタバレのタグ: 共有の「ネタバレを除く」では送らな
   eq(sharePayload(items, { title: 't', criteria: 'c', mode: 'all' }).items[0].tags, ['SF', '||犯人は兄||']);
 });
 
-test('題名の表示: 日本語と英数字の境目に改行しない印を入れる（保存する題名は変えない）', () => {
-  eq(joinScripts('Aあ').replace('\u2060', '|'), 'A|あ');
-  eq(joinScripts('あA1い').replace(/\u2060/g, '|'), 'あ|A1|い');
-  eq([joinScripts('Harry Potter'), joinScripts('火車')], ['Harry Potter', '火車']);
+test('題名の表示: 英数字が長く続くときだけ、行の端まで詰めて折り返す', () => {
+  eq([hasLongRun('Harry Potter'), hasLongRun('a'.repeat(16)), hasLongRun('aaあ' + 'a'.repeat(15))], [false, true, false]);
   resetApp();
-  setItems([make({ title: 'aaあ' })]);
-  eq(document.querySelector('#grid article h3').textContent.replace('\u2060', ''), 'aaあ');
-  eq(liveItems()[0].title, 'aaあ');
+  setItems([make({ title: 'a'.repeat(20) }), make({ title: 'Harry Potter' })]);
+  const heads = [...document.querySelectorAll('#grid article h3')];
+  eq(heads.map(h => [h.textContent, h.classList.contains('wrap-all')]).sort(), [['Harry Potter', false], ['a'.repeat(20), true]].sort());
 });
 
 // ---- CSV ----

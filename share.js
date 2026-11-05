@@ -66,10 +66,10 @@ function renderStars(rating) {
   return wrap;
 }
 
-// 日本語と英数字の境目で勝手に改行されないよう、境目に WORD JOINER（見えない文字）を入れる（表示だけ）
-const SHARE_CJK = '[\\u3040-\\u30ff\\u3400-\\u9fff\\uff00-\\uffef]';
-function joinScripts(text) {
-  return String(text).replace(new RegExp(`(${SHARE_CJK})(?=[A-Za-z0-9])|([A-Za-z0-9])(?=${SHARE_CJK})`, 'g'), '$1$2\u2060');
+// 英数字が長く続く題名は、行の端まで詰めて折り返す（ふつうの英単語は、単語ごと）
+function wrapAll(el, text) {
+  if (/[A-Za-z0-9]{16,}/.test(String(text))) el.classList.add('wrap-all');
+  return el;
 }
 
 function renderCover(item) {
@@ -84,7 +84,7 @@ function renderCover(item) {
   else {
     // 表紙がないときは、本の装丁のように、題名を載せる
     art.classList.add('share-art-plain');
-    art.append(node('span', 'share-art-title', joinScripts(String(item.title ?? '').trim())));
+    art.append(wrapAll(node('span', 'share-art-title', String(item.title ?? '').trim()), item.title));
   }
   return art;
 }
@@ -95,7 +95,7 @@ function renderShareItem(item) {
   const main = node('div', 'share-main');
   const head = node('div', 'share-item-head');
   head.append(node('b', '', String(item.genre ?? '')), renderStars(item.rating));
-  main.append(head, node('h2', '', joinScripts(item.title ?? '')));
+  main.append(head, wrapAll(node('h2', '', String(item.title ?? '')), item.title));
   if (item.readAt) main.append(node('p', 'share-date', formatDay(item.readAt + 'T00:00:00')));
   if (Array.isArray(item.tags) && item.tags.length) {
     const tags = node('div', 'tags');
