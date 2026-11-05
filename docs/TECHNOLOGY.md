@@ -141,7 +141,7 @@ Supabase は、PostgreSQL を中心にした、オープンソースの BaaS で
 | 作成・一覧・停止 | `shares` への挿入、取得、削除 | `app.js:1967`（`createShare`）、`:1996`（`loadMyShares`） |
 | 手動で選ぶ | 選択のモード、選択の保持、並び順の維持 | `app.js:1838`（`pickedItems`）、`:1853`（`setPicking`） |
 | 閲覧ページ | `share.html#<リンクの文字列>` を読み、RPC で取得して表示。すべて `textContent` | `share.js:128`（`loadShare`）、`:98`（`renderShare`） |
-| 閲覧ページの見た目 | 題・件数・平均★・特によかった（★4.5以上）の数を上に出し、カードは表紙（なければ題の頭文字）と星の塗りで見せる。★4.5以上のカードは縁取りする。広い画面では2列 | `share.js:98`（`renderShare`）、`:44`（`renderStars`） |
+| 閲覧ページの見た目 | 題・件数・平均★・特によかった（★4.5以上）の数を上に出し、カードは表紙（なければ題名の装丁風の表示）と星の塗りで見せる。★4.5以上のカードは縁取りする。広い画面では2列 | `share.js:98`（`renderShare`）、`:44`（`renderStars`） |
 | 共有の表紙の受け付け | `data:image/webp;base64,…` と `data:image/jpeg;base64,…` の形だけを `<img>` に入れる（外部の URL や SVG は表示しない）。CSP の `img-src` に `data:` を足したのは `share.html` だけ | `share.js:56`（`renderCover`） |
 | ネタバレの隠し方 | メモ・引用の中の `||` で囲んだ部分を、押すと開くボタンにする（その部分だけが出る）。以前の共有（記録全体がネタバレの印）は、閉じた `<details>` に入れる | `share.js:14`（`withSpoilers`）、`:69`（`renderShareItem`） |
 | 閲覧ページの安全策 | 検索除外、参照元を送らない、通信先の限定、SRI | `share.html` の `<head>` |

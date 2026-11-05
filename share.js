@@ -66,6 +66,12 @@ function renderStars(rating) {
   return wrap;
 }
 
+// 英数字が長く続く題名は、行の端まで詰めて折り返す（ふつうの英単語は、単語ごと）
+function wrapAll(el, text) {
+  if (/[A-Za-z0-9]{16,}/.test(String(text))) el.classList.add('wrap-all');
+  return el;
+}
+
 function renderCover(item) {
   const art = node('div', 'share-art');
   if (typeof item.cover === 'string' && SHARE_COVER_PATTERN.test(item.cover)) {
@@ -75,7 +81,11 @@ function renderCover(item) {
     img.src = item.cover;
     art.append(img);
   }
-  else art.append(node('span', '', String(item.title ?? '').trim().slice(0, 1)));
+  else {
+    // 表紙がないときは、本の装丁のように、題名を載せる
+    art.classList.add('share-art-plain');
+    art.append(wrapAll(node('span', 'share-art-title', String(item.title ?? '').trim()), item.title));
+  }
   return art;
 }
 
@@ -85,7 +95,7 @@ function renderShareItem(item) {
   const main = node('div', 'share-main');
   const head = node('div', 'share-item-head');
   head.append(node('b', '', String(item.genre ?? '')), renderStars(item.rating));
-  main.append(head, node('h2', '', String(item.title ?? '')));
+  main.append(head, wrapAll(node('h2', '', String(item.title ?? '')), item.title));
   if (item.readAt) main.append(node('p', 'share-date', formatDay(item.readAt + 'T00:00:00')));
   if (Array.isArray(item.tags) && item.tags.length) {
     const tags = node('div', 'tags');

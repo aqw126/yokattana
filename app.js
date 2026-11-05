@@ -598,6 +598,10 @@ async function collectCovers() {
   const used=new Set(state.items.map(x=>x.cover?.hash).filter(Boolean));
   await LocalStore.deleteCovers((await LocalStore.coverHashes()).filter(h=>!used.has(h)))
 }
+// 英数字が長く続く題名（単語とは言えない並び）は、行の端まで詰めて折り返す。ふつうの英単語は、単語ごとに折り返す
+function hasLongRun(text) {
+  return /[A-Za-z0-9]{16,}/.test(String(text))
+}
 function tidyCovers() {
   return storeMode==='idb'?internSoon():shrinkExistingCovers()
 }
@@ -746,20 +750,24 @@ function render() {
   grid.classList.toggle('picking',picking);
   [...selection].filter(id=>!live.some(x=>x.id===id)).forEach(id=>selection.delete(id));
   list.slice(0,shownLimit).forEach(x=> {
-    let n=tpl.content.cloneNode(true),img=n.querySelector('img'),letter=n.querySelector('.art span');
-    letter.textContent=[...x.title.trim()][0]||'？';
+    let n=tpl.content.cloneNode(true),img=n.querySelector('img'),letter=n.querySelector('.art span'),art=n.querySelector('.art');
+    // 表紙がないときは、本の装丁のように、題名を載せる
+    letter.textContent=x.title.trim()||'（題名なし）';
+    letter.classList.toggle('wrap-all',hasLongRun(x.title));
+    art.classList.toggle('plain',!x.cover);
     if(x.cover) {
       img.loading='lazy';
       img.decoding='async';
       img.alt=x.title+'の表紙';
       img.hidden=false;
       letter.hidden=true;
-      // 表紙が見つからないときは、頭文字に戻す
-      showCover(img,x.cover,()=> { img.hidden=true; letter.hidden=false; })
+      // 表紙が見つからないときは、装丁の表示に戻す
+      showCover(img,x.cover,()=> { img.hidden=true; letter.hidden=false; art.classList.add('plain'); })
     }
     n.querySelector('.meta b').textContent=x.genre;
     n.querySelector('.meta strong').textContent='★ '+Number(x.rating).toFixed(1);
     n.querySelector('h3').textContent=x.title;
+    n.querySelector('h3').classList.toggle('wrap-all',hasLongRun(x.title));
     n.querySelector('.tags').replaceChildren(...[...x.tags.slice(0,4),...(x.tags.length>4?[`+${x.tags.length-4}`]:[])].map(t=> {
       const span=document.createElement('span');
       // ネタバレのタグは、カードでは「ネタバレ」に置き換える
@@ -2036,8 +2044,8 @@ function openShare(items,title,criteria) {
   $('#share-create').disabled=!currentUser;
   $('#share-summary').textContent=`共有する記録：${items.length}件（${criteria}）`+(items.length>SHARE_LIMIT?`。共有できるのは${SHARE_LIMIT}件までです。絞り込んでください。`:'');
   $('#share-result').hidden=true;
-  // 表紙は、毎回選んだときだけ含める
-  $('#share-covers').checked=false;
+  // 表紙は、開くたびに「含める」へ戻す
+  $('#share-covers').checked=true;
   $('#share-native').hidden=!navigator.share;
   $('#share-dialog').showModal();
   loadMyShares()

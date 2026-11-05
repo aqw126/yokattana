@@ -228,24 +228,25 @@ function noisyCover(width = 600, height = 900) {
   return c.toDataURL('image/png');
 }
 
-test('共有: 「表紙を含める」を選んだときだけ、表紙を小さな WebP にして含める', async () => {
+test('共有: 「表紙を含める」は既定でオン。外すと表紙を含めず、オンなら小さな WebP にして含める', async () => {
   resetApp();
   currentUser = { id: 'u1' };
   const cover = noisyCover();
   setItems([make({ title: '表紙あり', cover }), make({ title: '表紙なし' })]);
   openShare(visible(), 't', 'c');
-  eq($('#share-covers').checked, false);
+  eq($('#share-covers').checked, true);
+  $('#share-covers').checked = false;
   await createShare();
-  assert(!JSON.stringify([...fakeCloud.shares.values()][0].payload).includes('data:image'), 'no covers unless chosen');
+  assert(!JSON.stringify([...fakeCloud.shares.values()][0].payload).includes('data:image'), 'no covers when unchecked');
   fakeCloud.shares.clear();
   openShare(visible(), 't', 'c');
-  $('#share-covers').checked = true;
   await createShare();
   const items = [...fakeCloud.shares.values()][0].payload.items, withCover = items.find(x => x.title === '表紙あり');
   assert(/^data:image\/webp;base64,/.test(withCover.cover) && withCover.cover.length <= SHARE_COVER_MAX, 'small webp');
   eq(items.find(x => x.title === '表紙なし').cover, undefined);
+  $('#share-covers').checked = false;
   openShare(visible(), 't', 'c');
-  eq($('#share-covers').checked, false);
+  eq($('#share-covers').checked, true);
   $('#share-dialog').close();
 });
 
@@ -258,7 +259,7 @@ test('共有: 100件に表紙を含めても、共有の上限（1MB）に収ま
   assert(new Blob([JSON.stringify(payload)]).size < 1000000, 'under the 1MB limit');
 });
 
-test('閲覧ページ: 表紙は WebP か JPEG の data URL だけを表示し、それ以外は頭文字にする', () => {
+test('閲覧ページ: 表紙は WebP か JPEG の data URL だけを表示し、それ以外は題名の装丁にする', () => {
   const root = document.createElement('div');
   renderShare(root, { payload: { title: 't', items: [
     { title: '火車', genre: '本', rating: 4.6, tags: [], cover: 'data:image/jpeg;base64,/9j/AAAA' },
@@ -267,7 +268,8 @@ test('閲覧ページ: 表紙は WebP か JPEG の data URL だけを表示し�
     { title: '図形', genre: '本', rating: 4, tags: [], cover: 'data:image/svg+xml;base64,AAAA' }
   ] } });
   const arts = [...root.querySelectorAll('.share-art')];
-  eq(arts.map(a => a.querySelector('img')?.getAttribute('src') || a.textContent), ['data:image/jpeg;base64,/9j/AAAA', 'data:image/webp;base64,UklGRgAA', '外', '図']);
+  eq(arts.map(a => a.querySelector('img')?.getAttribute('src') || a.textContent), ['data:image/jpeg;base64,/9j/AAAA', 'data:image/webp;base64,UklGRgAA', '外の画像', '図形']);
+  assert(arts[2].classList.contains('share-art-plain') && !arts[0].classList.contains('share-art-plain'), '表紙なしだけ装丁の表示');
   eq([...root.querySelectorAll('article')].map(a => a.classList.contains('top')), [true, false, false, false]);
   eq(root.querySelector('.share-stars').getAttribute('aria-label'), '評価 4.6');
 });

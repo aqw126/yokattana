@@ -205,6 +205,14 @@ test('ネタバレのタグ: 共有の「ネタバレを除く」では送らな
   eq(sharePayload(items, { title: 't', criteria: 'c', mode: 'all' }).items[0].tags, ['SF', '||犯人は兄||']);
 });
 
+test('題名の表示: 英数字が長く続くときだけ、行の端まで詰めて折り返す', () => {
+  eq([hasLongRun('Harry Potter'), hasLongRun('a'.repeat(16)), hasLongRun('aaあ' + 'a'.repeat(15))], [false, true, false]);
+  resetApp();
+  setItems([make({ title: 'a'.repeat(20) }), make({ title: 'Harry Potter' })]);
+  const heads = [...document.querySelectorAll('#grid article h3')];
+  eq(heads.map(h => [h.textContent, h.classList.contains('wrap-all')]).sort(), [['Harry Potter', false], ['a'.repeat(20), true]].sort());
+});
+
 // ---- CSV ----
 test('parseCsv: 引用符、改行、BOM、CRLFを扱う', () => {
   const rows = parseCsv('﻿a,b\r\n"x,1","he said ""hi""\nnext"\r\n');
