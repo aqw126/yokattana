@@ -237,11 +237,10 @@ aside span {
   object-fit:cover
 }
 /* 表紙なし: 背表紙と枠のある、本のような見た目（共有ページの .share-art-plain と同じ） */
-.art span, .art small { display:none }
-.art.plain { position:relative; grid-template-rows:1fr auto; padding:18px 16px 14px 26px; color:var(--art-ink); box-shadow:inset 10px 0 0 #00000014, inset 11px 0 0 #ffffff40 }
+.art span { display:none }
+.art.plain { position:relative; padding:18px 16px 14px 26px; color:var(--art-ink); box-shadow:inset 10px 0 0 #00000014, inset 11px 0 0 #ffffff40 }
 .art.plain::before { content:""; position:absolute; inset:9px 9px 9px 19px; border:1px solid currentColor; opacity:.35; border-radius:4px; pointer-events:none }
-.art.plain span:not([hidden]) { display:-webkit-box; font-family:Georgia,'Hiragino Mincho ProN','Yu Mincho',serif; font-size:17px; line-height:1.5; font-weight:700; text-align:center; overflow:hidden; -webkit-line-clamp:4; -webkit-box-orient:vertical; word-break:break-all; align-self:center }
-.art.plain small { display:block; font-size:11px; letter-spacing:.1em; opacity:.75; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.art.plain span:not([hidden]) { display:-webkit-box; font-family:Georgia,'Hiragino Mincho ProN','Yu Mincho',serif; font-size:17px; line-height:1.5; font-weight:700; text-align:center; overflow:hidden; -webkit-line-clamp:4; -webkit-box-orient:vertical; overflow-wrap:anywhere; min-width:0; max-width:100%; }
 .cardbody {
   padding:17px 17px 8px
 }
@@ -259,7 +258,8 @@ aside span {
 h3 {
   font-size:17px;
   line-height:1.5;
-  margin:9px 0 8px
+  margin:9px 0 8px;
+  overflow-wrap:anywhere
 }
 .tags {
   display:flex;
@@ -698,8 +698,8 @@ dialog footer {
 .work-result { display:flex; align-items:center; gap:10px; width:100%; padding:6px 8px; border:0; border-radius:8px; background:transparent; color:var(--ink); text-align:left; }
 .work-result:hover { background:var(--pale); }
 .work-result > span:last-child { display:grid; gap:2px; min-width:0; }
-.work-result b { font-size:13px; overflow-wrap:anywhere; }
-.work-result small { color:var(--muted); font-size:11px; overflow-wrap:anywhere; }
+.work-result b { font-size:13px; overflow-wrap:anywhere; min-width:0; max-width:100%; }
+.work-result small { color:var(--muted); font-size:11px; overflow-wrap:anywhere; min-width:0; max-width:100%; }
 .work-thumb { flex:none; display:grid; place-items:center; width:36px; height:50px; border-radius:4px; overflow:hidden; background:var(--art-grad); color:var(--art-ink); font-size:13px; font-weight:700; }
 .work-thumb img { width:100%; height:100%; object-fit:cover; }
 .manage-note { color:var(--muted); font-size:13px; line-height:1.7; margin:0 0 16px; }
@@ -821,7 +821,7 @@ dialog footer {
 .share { max-width:980px; }
 .share-header { margin:12px 0 8px; }
 .share-eyebrow { margin:0; color:var(--sage); font-size:12px; font-weight:700; letter-spacing:.12em; }
-.share h1 { font-family:Georgia,"Yu Mincho",serif; font-size:32px; line-height:1.35; font-weight:700; margin:6px 0 16px; overflow-wrap:anywhere; }
+.share h1 { font-family:Georgia,"Yu Mincho",serif; font-size:32px; line-height:1.35; font-weight:700; margin:6px 0 16px; overflow-wrap:anywhere; min-width:0; max-width:100%; }
 .share-stats { display:flex; flex-wrap:wrap; gap:10px; margin:0 0 12px; }
 .share-stats div { min-width:96px; padding:10px 16px; border:1px solid var(--line); border-radius:12px; background:var(--paper); }
 .share-stats strong { display:block; font-family:Georgia,serif; font-size:24px; line-height:1.2; color:var(--dark); }
@@ -835,12 +835,11 @@ dialog footer {
 .share-art { width:84px; aspect-ratio:2/3; border-radius:6px; overflow:hidden; display:grid; place-items:center; background:var(--art-grad); }
 .share-art img { width:100%; height:100%; object-fit:cover; display:block; }
 /* 表紙なし: 背表紙と枠のある、本のような見た目 */
-.share-art-plain { position:relative; grid-template-rows:1fr auto; place-items:center; padding:10px 8px 8px 14px; box-shadow:inset 6px 0 0 #00000014, inset 7px 0 0 #ffffff40; color:var(--art-ink); }
+.share-art-plain { position:relative; place-items:center; padding:10px 8px 8px 14px; box-shadow:inset 6px 0 0 #00000014, inset 7px 0 0 #ffffff40; color:var(--art-ink); }
 .share-art-plain::before { content:""; position:absolute; inset:5px 5px 5px 11px; border:1px solid currentColor; opacity:.35; border-radius:3px; pointer-events:none; }
-.share-art-title { font-family:Georgia,'Hiragino Mincho ProN','Yu Mincho',serif; font-size:12px; line-height:1.5; font-weight:700; text-align:center; overflow:hidden; display:-webkit-box; -webkit-line-clamp:4; -webkit-box-orient:vertical; word-break:break-all; align-self:center; }
-.share-art-plain small { font-size:9px; letter-spacing:.1em; opacity:.75; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.share-art-title { font-family:Georgia,'Hiragino Mincho ProN','Yu Mincho',serif; font-size:12px; line-height:1.5; font-weight:700; text-align:center; overflow:hidden; display:-webkit-box; -webkit-line-clamp:4; -webkit-box-orient:vertical; overflow-wrap:anywhere; min-width:0; max-width:100%; }
 .share-main { min-width:0; }
-.share-item h2 { font-size:17px; line-height:1.5; margin:6px 0 2px; overflow-wrap:anywhere; }
+.share-item h2 { font-size:17px; line-height:1.5; margin:6px 0 2px; overflow-wrap:anywhere; min-width:0; max-width:100%; }
 .share-item-head { display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:12px; }
 .share-item-head b { color:var(--dark); }
 .share-rating { display:inline-flex; align-items:center; gap:6px; color:var(--warm); }

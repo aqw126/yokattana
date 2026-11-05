@@ -747,9 +747,8 @@ function render() {
   [...selection].filter(id=>!live.some(x=>x.id===id)).forEach(id=>selection.delete(id));
   list.slice(0,shownLimit).forEach(x=> {
     let n=tpl.content.cloneNode(true),img=n.querySelector('img'),letter=n.querySelector('.art span'),art=n.querySelector('.art');
-    // 表紙がないときは、本の装丁のように、題名とジャンルを載せる
+    // 表紙がないときは、本の装丁のように、題名を載せる
     letter.textContent=x.title.trim()||'（題名なし）';
-    n.querySelector('.art small').textContent=x.genre;
     art.classList.toggle('plain',!x.cover);
     if(x.cover) {
       img.loading='lazy';

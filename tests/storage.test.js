@@ -86,7 +86,7 @@ test('表紙: 保存すると参照になり、カードには画像として出
   currentUser = null;
 });
 
-test('表紙: 見つからない参照は、題名とジャンルの装丁の表示に戻る', async () => {
+test('表紙: 見つからない参照は、題名の装丁の表示に戻る', async () => {
   await freshStore();
   setItems([make({ title: '迷子', cover: { hash: 'b'.repeat(64) } })]);
   const card = document.querySelector('#grid article');

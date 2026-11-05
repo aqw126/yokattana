@@ -76,9 +76,9 @@ function renderCover(item) {
     art.append(img);
   }
   else {
-    // 表紙がないときは、本の装丁のように、題名とジャンルを載せる
+    // 表紙がないときは、本の装丁のように、題名を載せる
     art.classList.add('share-art-plain');
-    art.append(node('span', 'share-art-title', String(item.title ?? '').trim()), node('small', '', String(item.genre ?? '')));
+    art.append(node('span', 'share-art-title', String(item.title ?? '').trim()));
   }
   return art;
 }

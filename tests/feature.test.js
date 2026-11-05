@@ -259,7 +259,7 @@ test('共有: 100件に表紙を含めても、共有の上限（1MB）に収ま
   assert(new Blob([JSON.stringify(payload)]).size < 1000000, 'under the 1MB limit');
 });
 
-test('閲覧ページ: 表紙は WebP か JPEG の data URL だけを表示し、それ以外は題名とジャンルの装丁にする', () => {
+test('閲覧ページ: 表紙は WebP か JPEG の data URL だけを表示し、それ以外は題名の装丁にする', () => {
   const root = document.createElement('div');
   renderShare(root, { payload: { title: 't', items: [
     { title: '火車', genre: '本', rating: 4.6, tags: [], cover: 'data:image/jpeg;base64,/9j/AAAA' },
@@ -268,7 +268,7 @@ test('閲覧ページ: 表紙は WebP か JPEG の data URL だけを表示し�
     { title: '図形', genre: '本', rating: 4, tags: [], cover: 'data:image/svg+xml;base64,AAAA' }
   ] } });
   const arts = [...root.querySelectorAll('.share-art')];
-  eq(arts.map(a => a.querySelector('img')?.getAttribute('src') || a.textContent), ['data:image/jpeg;base64,/9j/AAAA', 'data:image/webp;base64,UklGRgAA', '外の画像本', '図形本']);
+  eq(arts.map(a => a.querySelector('img')?.getAttribute('src') || a.textContent), ['data:image/jpeg;base64,/9j/AAAA', 'data:image/webp;base64,UklGRgAA', '外の画像', '図形']);
   assert(arts[2].classList.contains('share-art-plain') && !arts[0].classList.contains('share-art-plain'), '表紙なしだけ装丁の表示');
   eq([...root.querySelectorAll('article')].map(a => a.classList.contains('top')), [true, false, false, false]);
   eq(root.querySelector('.share-stars').getAttribute('aria-label'), '評価 4.6');
