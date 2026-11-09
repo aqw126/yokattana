@@ -274,7 +274,7 @@ function localDay(d=new Date()) {
   const p=n=>String(n).padStart(2,'0');
   return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`
 }
-// 振り返りでの基準日: 読んだ日があればそれ、なければ追加した日
+// 振り返りでの基準日: 日付があればそれ、なければ追加した日
 function basisDay(item) {
   return item.readAt||localDay(new Date(item.createdAt))
 }
@@ -708,7 +708,7 @@ function compareItems(s,a,b) {
   if(s==='low') return a.rating-b.rating||added;
   if(s==='title') return a.title.localeCompare(b.title,'ja');
   if(s==='read'||s==='readold') {
-    // 読んだ日が未入力の記録は、どちらの並びでも最後にする
+    // 日付が未入力の記録は、どちらの並びでも最後にする
     if(!a.readAt||!b.readAt) return a.readAt?-1:b.readAt?1:added;
     return(s==='read'?b.readAt.localeCompare(a.readAt):a.readAt.localeCompare(b.readAt))||added
   }
@@ -1537,7 +1537,7 @@ function csvCell(value) {
   return/[",\r\n]/.test(text)?`"${text.replace(/"/g,'""')}"`:text
 }
 function exportCsv() {
-  const header=['タイトル','ジャンル','評価','読んだ日','タグ','メモ','引用','ネタバレ','追加日'];
+  const header=['タイトル','ジャンル','評価','日付','タグ','メモ','引用','ネタバレ','追加日'];
   const rows=[...liveItems()].sort((a,b)=>new Date(a.createdAt)-new Date(b.createdAt)).map(x=>[x.title,x.genre,x.rating.toFixed(1),x.readAt||'',x.tags.join(';'),x.notes,x.quote,x.spoiler?'あり':'',localDay(new Date(x.createdAt))]);
   const text='\ufeff'+[header,...rows].map(row=>row.map(csvCell).join(',')).join('\r\n')+'\r\n';
   const url=URL.createObjectURL(new Blob([text], { type:'text/csv;charset=utf-8' })),a=document.createElement('a');
@@ -1577,7 +1577,7 @@ const CSV_FIELDS= {
   title:['タイトル','書名','作品名','title','name'],
   genre:['ジャンル','カテゴリ','カテゴリー','種別','genre','category'],
   rating:['評価','★','rating','score'],
-  readAt:['読んだ日','読了日','鑑賞日','視聴日','日付','readat','date'],
+  readAt:['日付','体験日','読んだ日','読了日','鑑賞日','視聴日','日付','readat','date'],
   tags:['タグ','tags','tag'],
   notes:['メモ','感想','レビュー','読書メモ(ネタバレ)','読書メモ','コメント','notes','review','comment'],
   quote:['引用','名言','quote'],

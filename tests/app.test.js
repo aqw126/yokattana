@@ -98,7 +98,7 @@ test('compactTrash: 30日たったごみ箱の中身だけを消す', () => {
   eq(c.title, '作品');
 });
 
-test('compareItems: 読んだ日の未入力は、どちらの並びでも最後', () => {
+test('compareItems: 日付の未入力は、どちらの並びでも最後', () => {
   const a = make({ title: 'a', readAt: '2026-03-01' }), b = make({ title: 'b', readAt: '2026-05-01' }), c = make({ title: 'c', readAt: null });
   eq([a, b, c].sort((x, y) => compareItems('read', x, y)).map(x => x.title), ['b', 'a', 'c']);
   eq([a, b, c].sort((x, y) => compareItems('readold', x, y)).map(x => x.title), ['a', 'b', 'c']);
@@ -242,7 +242,7 @@ test('csvItems: タイトル列のないCSVは受け付けない', () => {
   eq(csvItems('a,b\r\n1,2\r\n'), null);
 });
 
-test('importCsv: 追加し、同じタイトルと読んだ日は読み飛ばす', () => {
+test('importCsv: 追加し、同じタイトルと日付は読み飛ばす', () => {
   setItems([make({ title: '既存', readAt: '2026-01-01' })]);
   const csv = 'タイトル,読んだ日\r\n既存,2026-01-01\r\n新規,2026-02-02\r\n';
   importCsv(csv);

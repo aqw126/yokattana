@@ -19,7 +19,7 @@
     <link rel="apple-touch-icon" href="apple-touch-icon.png">
     <script src="theme.js"></script>
     <link rel="manifest" href="manifest.webmanifest">
-    <link rel="stylesheet" href="styles.css?v=202611052016">
+    <link rel="stylesheet" href="styles.css?v=202611092049">
   </head>
   <body>
     <a class="skip-link" href="#top">本文へ移動</a>
@@ -119,10 +119,10 @@
               追加順（古い）
             </option>
             <option value="read">
-              読んだ日（新しい）
+              日付（新しい）
             </option>
             <option value="readold">
-              読んだ日（古い）
+              日付（古い）
             </option>
             <option value="high">
               評価が高い順
@@ -267,7 +267,7 @@
               </label>
             </div>
             <label class="read-field">
-              読んだ日
+              日付
               <em class="optional">
                 任意
               </em>
@@ -417,7 +417,7 @@
           <button type="button" class="secondary" id="export-csv">CSVで書き出す</button>
         </div>
         <h3 class="manage-title">読み込み</h3>
-        <p class="manage-note">JSON（バックアップ）は、現在の記録を置き換えます。CSV（ブクログなどの書き出し）は、今の記録に追加します。タイトルと読んだ日が同じ記録は、読み飛ばします。</p>
+        <p class="manage-note">JSON（バックアップ）は、現在の記録を置き換えます。CSV（ブクログなどの書き出し）は、今の記録に追加します。タイトルと日付が同じ記録は、読み飛ばします。</p>
         <div class="data-actions">
           <button type="button" class="secondary" id="import-data">ファイルを選んで読み込む</button>
         </div>
@@ -458,7 +458,7 @@
         <label class="review-year">期間
           <select id="review-year"></select>
         </label>
-        <p class="manage-note">「読んだ日」が未入力の記録は、追加した日で数えます。</p>
+        <p class="manage-note">「日付」が未入力の記録は、追加した日で数えます。</p>
         <div id="review-summary" class="review-summary"></div>
         <h3 class="manage-title" id="review-time-title">月ごとの件数</h3>
         <div id="review-time" class="bars"></div>
@@ -511,10 +511,10 @@
       </article>
     </template>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js" integrity="sha384-TcHRA3zBbn+Lexh5n+Oil4guNPOS3rjNDpGRAN46u/s/mB2IZ50ceC6TYDU2yvgK" crossorigin="anonymous"></script>
-    <script src="supabase-config.js?v=202611052016"></script>
-    <script src="tmdb-config.js?v=202611052016"></script>
-    <script src="store.js?v=202611052016"></script>
-    <script src="app.js?v=202611052016"></script>
+    <script src="supabase-config.js?v=202611092049"></script>
+    <script src="tmdb-config.js?v=202611092049"></script>
+    <script src="store.js?v=202611092049"></script>
+    <script src="app.js?v=202611092049"></script>
   </body>
 </html>
 
