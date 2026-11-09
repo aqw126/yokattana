@@ -281,7 +281,8 @@
               <small>タグの名前を押すと、ネタバレのタグにできます（カードや共有ページで隠れます）。「×」で削除</small>
               <div id="tag-chips" class="tag-chips" aria-live="polite"></div>
               <div class="tag-input-row">
-                <input id="tag-input" aria-label="追加するタグ" maxlength="80" placeholder="例：バトル、冒険">
+                <input id="tag-input" aria-label="追加するタグ" maxlength="80" placeholder="例：バトル、冒険" list="tag-suggest" autocomplete="off">
+                <datalist id="tag-suggest"></datalist>
                 <button id="add-tag" class="secondary" type="button">追加</button>
               </div>
               <div class="tag-spoiler-row">
