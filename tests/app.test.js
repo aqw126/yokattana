@@ -587,3 +587,16 @@ test('検索: 記録を更新したら、検索用の文字列も作り直され
   state.items = [{ ...a, title: '新題' }];
   eq(visible().length, 1);
 });
+
+test('タグの候補: これまでのタグから、ネタバレの印を外し、付けたものを除いて出す', () => {
+  const saved = [state.items, state.formTags];
+  const base = { title: 't', genre: '本', rating: 3, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' };
+  state.items = [
+    normalizeItem({ ...base, id: 'tg1', tags: ['冒険', '||犯人||'] }),
+    normalizeItem({ ...base, id: 'tg2', tags: ['バトル', '冒険'] }),
+  ];
+  state.formTags = ['バトル'];
+  renderTagSuggest();
+  eq([...document.querySelectorAll('#tag-suggest option')].map(o => o.value).sort(), ['冒険', '犯人']);
+  [state.items, state.formTags] = saved;
+});

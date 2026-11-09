@@ -863,6 +863,15 @@ function renderFormTags() {
     container.append(chip)
   })
 }
+// 入力中のタグの候補: これまでにつけたタグ（ネタバレの「||」は外す）から、すでに付けたものを除く
+function renderTagSuggest() {
+  const used=new Set(state.formTags.map(tagLabel));
+  $('#tag-suggest').replaceChildren(...[...new Set(alltags().map(tagLabel))].filter(t=>!used.has(t)).map(t=> {
+    const o=document.createElement('option');
+    o.value=t;
+    return o
+  }))
+}
 function addFormTag() {
   const input=$('#tag-input');
   let tag=input.value.trim();
@@ -871,7 +880,8 @@ function addFormTag() {
   state.formTags.push(tag);
   input.value='';
   dirty=true;
-  renderFormTags()
+  renderFormTags();
+  renderTagSuggest()
 }
 // 作品の自動入力: タイトルで、本（国立国会図書館サーチ）と漫画・アニメ（AniList）を探す
 const ANILIST='https://graphql.anilist.co',NDL='https://ndlsearch.ndl.go.jp/api/opensearch',WORK_TAGS=6;
@@ -1429,6 +1439,7 @@ $('#mark-spoiler').onclick=()=> {
   area.focus()
 };
 $('#tmdb-credit').hidden=!tmdbKey();
+$('#tag-input').addEventListener('focus',renderTagSuggest);
 $('#tag-input').addEventListener('keydown', event=> {
   if(event.key==='Enter') {
     event.preventDefault();
