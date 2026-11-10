@@ -211,7 +211,7 @@ Supabase は、PostgreSQL を中心にした、オープンソースの BaaS で
 | **GitHub Pages** | 静的ファイルを無料で配信（HTTPS）。ブラウザの保存期間が10分あるため、`?v=` の印で更新を確実にする | リポジトリの設定 |
 | **Git / GitHub** | 変更履歴。ブランチを切り、プルリクエストで確認してマージ | — |
 | **GitHub Actions** | `test.yml`：変更のたびにテスト。`keepalive.yml`：週1回、Supabase に接続して、無料枠の自動停止を防ぐ。期限切れの共有も消す | `.github/workflows/` |
-| **静的チェック** | `security.yml`：Semgrep（独自ルールで `innerHTML`・`eval` などを禁止、公開ルールも併用）、ESLint（security / no-unsanitized）、ruff（Python、bandit 系）、zizmor（Actions の設定）。Action は commit SHA で固定し、`dependabot.yml` で週1回、更新の PR を自動で作る | `.semgrep/`、`tools/lint/`、`ruff.toml`、`tools/security-check.py` |
+| **静的チェック** | `security.yml`：Semgrep（独自ルールで `innerHTML`・`eval` などを禁止、公開ルールも併用）、ESLint（security / no-unsanitized）、ruff（Python、bandit 系）、zizmor（Actions の設定）。Action は commit SHA で固定し、`dependabot.yml` で週1回、Actions と `tools/lint` の npm 依存の更新 PR を自動で作る | `.semgrep/`、`tools/lint/`、`ruff.toml`、`tools/security-check.py` |
 | **jsDelivr（CDN）** | supabase-js の配信元 | `index.html:499` |
 | **キャッシュ回避の印** | `?v=...` と、Service Worker のバージョンを、一括で更新 | `tools/bump-version.py` |
 | **Python** | 補助の道具。バージョン更新と、テストの実行 | `tools/`、`tests/run.py` |
