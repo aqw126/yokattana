@@ -171,7 +171,7 @@ function renderShare(root, result) {
   const meta = [payload.criteria, payload.sharedAt ? formatDay(payload.sharedAt) + ' に共有' : ''].filter(Boolean).join(' ・ ');
   if (meta) header.append(node('p', 'share-meta', meta));
   root.append(header);
-  const spoilers = items.some(x => x.spoiler || (Array.isArray(x.tags) && x.tags.some(t => SHARE_SPOILER_TAG.test(String(t)))) || [x.notes, x.quote].some(t => new RegExp(SHARE_SPOILER.source).test(String(t || ''))));
+  const spoilers = items.some(x => x.spoiler || (Array.isArray(x.tags) && x.tags.some(t => SHARE_SPOILER_TAG.test(String(t)))) || [x.notes, x.quote].some(t => /\|\|[\s\S]+?\|\|/.test(String(t || ''))));
   if (spoilers) root.append(node('p', 'share-note', 'ネタバレの部分は隠しています。押すと表示されます。'));
   const genres = countValues(items, x => [String(x.genre ?? '')].filter(Boolean));
   const tags = countValues(items, x => (Array.isArray(x.tags) ? x.tags : []).map(String).filter(t => t && !SHARE_SPOILER_TAG.test(t)));
