@@ -38,6 +38,7 @@
 - `privacy.html`: プライバシーポリシー（情報の扱いだけ）
 - `tests/`: ブラウザで動く自動テスト。`python tests/run.py` で、ヘッドレス Chrome を使って実行します（`tests/index.html` を、ローカルサーバー経由で開いても確認できます）。アクセシビリティの確認も含みますテストのページは、終わると結果を `run.py` に送り返します（IndexedDB の読み書きを実際の時間で待つため）。
 - `.github/workflows/test.yml`: プッシュと PR のたびに、上のテストを自動で実行します
+- `.semgrep/`, `ruff.toml`, `tools/lint/`, `tools/security-check.py`, `.github/workflows/security.yml`: セキュリティの静的チェック（Semgrep、ESLint、ruff、zizmor）。`python tools/security-check.py` で実行でき、プッシュ・PR・週1回に CI でも走ります
 - `tools/bump-version.py`: `styles.css` / `app.js` などを変更したら実行して、キャッシュ回避用の `?v=` を更新します
 - `.github/workflows/keepalive.yml`: Supabase 無料枠の自動停止を防ぐ、週1回のアクセス
 

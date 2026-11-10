@@ -1,0 +1,45 @@
+# よかっ棚 固有のセキュリティルール。
+# CSP の Trusted Types (require-trusted-types-for 'script') を守るため、文字列を HTML / コードとして
+# 解釈するシンクは使わない。textContent や DOM API を使うこと。
+rules:
+  - id: yokattana-no-html-sink
+    languages: [javascript]
+    severity: ERROR
+    message: >-
+      innerHTML / outerHTML への代入は禁止です (Trusted Types)。textContent か DOM API を使ってください。
+    pattern-either:
+      - pattern: $EL.innerHTML = ...
+      - pattern: $EL.outerHTML = ...
+      - pattern: $EL.innerHTML += ...
+    paths:
+      exclude: [tests/]
+
+  - id: yokattana-no-html-insert
+    languages: [javascript]
+    severity: ERROR
+    message: >-
+      insertAdjacentHTML / document.write / createContextualFragment / srcdoc は禁止です (Trusted Types)。
+    pattern-either:
+      - pattern: $EL.insertAdjacentHTML(...)
+      - pattern: document.write(...)
+      - pattern: document.writeln(...)
+      - pattern: $R.createContextualFragment(...)
+      - pattern: $EL.srcdoc = ...
+    paths:
+      exclude: [tests/]
+
+  - id: yokattana-no-dynamic-code
+    languages: [javascript]
+    severity: ERROR
+    message: eval / new Function / 文字列を渡す setTimeout・setInterval は使わないでください。
+    pattern-either:
+      - pattern: eval(...)
+      - pattern: new Function(...)
+      - pattern: setTimeout("...", ...)
+      - pattern: setInterval("...", ...)
+
+  - id: yokattana-target-blank-noopener
+    languages: [html]
+    severity: WARNING
+    message: target="_blank" のリンクには rel="noopener noreferrer" を付けてください。
+    pattern-regex: <a\b(?![^>]*\brel="[^"]*noopener)[^>]*\btarget="_blank"[^>]*>

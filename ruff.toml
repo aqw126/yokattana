@@ -1,0 +1,7 @@
+# Python (tests/run.py, tools/*.py) の lint。S は bandit 由来のセキュリティルール。
+target-version = "py312"
+[lint]
+select = ["E", "F", "B", "S", "UP"]
+ignore = ["E501"]  # 日本語まじりの長い行は許容 (セキュリティとは無関係)
+[lint.per-file-ignores]
+"tests/run.py" = ["S603", "S607"]  # ヘッドレス Chrome を固定の引数で起動するため
