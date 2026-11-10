@@ -281,7 +281,7 @@ function basisDay(item) {
 // ネタバレは、メモ・引用の中の「||」で囲んだ部分。「最後に||犯人は兄||だと分かる」
 const SPOILER=/\|\|([\s\S]+?)\|\|/g;
 function hasSpoiler(text) {
-  return new RegExp(SPOILER.source).test(String(text||''))
+  return /\|\|[\s\S]+?\|\|/.test(String(text||''))
 }
 // 文字列を、ふつうの部分とネタバレの部分に分ける。閉じていない「||」は、そのまま文字として扱う
 function spoilerParts(text) {
@@ -932,7 +932,7 @@ function pickGenre(kind) {
 }
 function personName(raw) {
   // 「宮部, みゆき, 1960-」「宮部／みゆき」→「宮部みゆき」
-  const name=String(raw||'').replace(/,\s*\d{4}-(\d{4})?\s*$/,'').trim();
+  const name=String(raw||'').trim().replace(/,\s*\d{4}-\d{0,4}$/,'').trim();
   return /[぀-ヿ㐀-鿿]/.test(name)?name.replace(/[\s,，／/]+/g,''):name.replace(/\s*,\s*/g,' ')
 }
 function parseAniList(json) {
