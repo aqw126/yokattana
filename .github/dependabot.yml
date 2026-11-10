@@ -7,6 +7,9 @@ updates:
     schedule:
       interval: weekly
       day: monday
+    # 公開直後の版は悪意・不安定の可能性があるので、7日待ってから提案する
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 5
     commit-message:
       prefix: "chore"
