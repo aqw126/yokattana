@@ -1,3 +1,6 @@
 .DS_Store
 Thumbs.db
 __pycache__/
+
+# lint 用の依存
+tools/lint/node_modules/

@@ -1,0 +1,11 @@
+{
+  "name": "yokattana-lint",
+  "private": true,
+  "description": "ESLint 専用 (アプリ本体は no-build)。ここ以外に package.json は置かない。",
+  "devDependencies": {
+    "eslint": "9.39.1",
+    "eslint-plugin-no-unsanitized": "4.1.4",
+    "eslint-plugin-security": "3.0.1",
+    "globals": "16.5.0"
+  }
+}
