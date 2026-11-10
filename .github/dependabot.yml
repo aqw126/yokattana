@@ -1,0 +1,18 @@
+# GitHub Actions の更新を自動で提案する。
+# Action は commit SHA で固定しているので、Dependabot が SHA とバージョンのコメントをまとめて更新する。
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    # 公開直後の版は悪意・不安定の可能性があるので、7日待ってから提案する
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore"
+    groups:
+      actions:
+        patterns: ["*"]
