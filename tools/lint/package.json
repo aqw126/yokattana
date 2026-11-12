@@ -3,9 +3,9 @@
   "private": true,
   "description": "ESLint 専用 (アプリ本体は no-build)。ここ以外に package.json は置かない。",
   "devDependencies": {
-    "eslint": "9.39.1",
-    "eslint-plugin-no-unsanitized": "4.1.4",
-    "eslint-plugin-security": "3.0.1",
-    "globals": "16.5.0"
+    "eslint": "10.14.0",
+    "eslint-plugin-no-unsanitized": "4.1.5",
+    "eslint-plugin-security": "4.2.1",
+    "globals": "17.14.0"
   }
 }
